@@ -2,4 +2,4 @@
 
 _TODO: servicios, responsabilidades, mantenedor, mecanismo de cada comunicación (síncrona/asíncrona), formato de eventos, estados del pedido y quién puede cambiarlos._
 
-Estados propuestos: RECIBIDO → EN_PREPARACION → LISTO → ENTREGADO
+Estados propuestos: RECIBIDO → EN_PREPARACION → LISTO → ENTREGADO (estado de pago separado si se modela aparte)

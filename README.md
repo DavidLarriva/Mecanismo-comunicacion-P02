@@ -8,11 +8,16 @@ Pedidos desde web/móvil que recorren cocina, caja y facturación, con notificac
 | Mecanismo | Tipo | Uso |
 |---|---|---|
 | REST | Síncrono | Cliente ↔ API de pedidos |
-| Kafka | Asíncrono | API → servicios internos |
-| WebSockets | Asíncrono | Notificaciones al cliente |
+| Kafka | Asíncrono | API → servicios internos (cocina, caja, facturación) |
+| gRPC | Síncrono | Un único caso interno que requiere respuesta inmediata (por definir) |
+| WebSockets | Persistente / bidireccional | Notificaciones de estado al cliente |
+
+> Nota: la consigna base pide REST + 2 mecanismos; gRPC es un cuarto mecanismo adicional (confirmar alcance con el docente).
 
 ## Estructura
-- `backend/` — servicios (api-rest, cocina, caja, facturacion, kafka, websockets, estadisticas)
+- `backend/` — servicios (api-rest, kafka, cocina, caja, facturacion, grpc, websockets, estadisticas)
+- `contracts/` — contrato JSON del pedido y `.proto` de gRPC
+- `infra/` — docker-compose (Kafka)
 - `docs/arquitectura/` — C4, escenarios de calidad, mapa de microservicios
 - `docs/adr/` — decisiones de arquitectura
 - `docs/pruebas/` — pruebas de comportamiento (resultados reales)
@@ -30,7 +35,7 @@ _TODO_
 ## Equipo
 | Integrante | Responsabilidad |
 |---|---|
-| 1 | Arquitectura y API REST |
+| 1 | REST y contrato del pedido |
 | 2 | Kafka y mensajería asíncrona |
-| 3 | WebSockets y notificaciones |
-| 4 | Servicios internos, integración y estadísticas |
+| 3 | gRPC y comunicación interna |
+| 4 | WebSockets y notificaciones |

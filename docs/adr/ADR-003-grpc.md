@@ -1,7 +1,7 @@
-# ADR-004: Selección de mecanismos (Kafka y WebSockets frente a alternativas)
+# ADR-003: gRPC
 
 - **Estado:** Propuesto
-- **Responsable:** Integrante 4
+- **Responsable:** Integrante 3
 
 ## Contexto
 

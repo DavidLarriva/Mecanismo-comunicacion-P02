@@ -1,7 +1,7 @@
 # Prueba WebSockets: desconexión/reconexión
 
 - **Escenario de calidad relacionado:** 
-- **Responsable:** Integrante 3
+- **Responsable:** Integrante 4
 
 ## Ejecución
 

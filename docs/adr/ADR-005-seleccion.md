@@ -1,7 +1,7 @@
-# ADR-003: WebSockets
+# ADR-005: Selección de mecanismos y arquitectura conjunta
 
 - **Estado:** Propuesto
-- **Responsable:** Integrante 3
+- **Responsable:** Todos
 
 ## Contexto
 

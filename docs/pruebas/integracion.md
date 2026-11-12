@@ -1,7 +1,7 @@
 # Prueba de integración: flujo completo
 
 - **Escenario de calidad relacionado:** 
-- **Responsable:** Integrante 4
+- **Responsable:** Todos (coordina Integrante 4)
 
 ## Ejecución
 
