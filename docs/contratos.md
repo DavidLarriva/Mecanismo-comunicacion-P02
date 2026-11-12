@@ -22,9 +22,9 @@ Ningún integrante cambia por su cuenta un endpoint, un topic, un evento, el `.p
 
 | Uso | Librería |
 |---|---|
-| Lenguaje | Python 3.12 (en un `.venv`; las versiones se fijan en `requirements.txt`) |
+| Lenguaje | Python 3.12 o superior (probado en 3.14), en un `.venv`. Las versiones exactas están en `requirements.txt` |
 | REST | `fastapi` + `uvicorn` |
-| Kafka | `kafka-python` ≥ 2.1 (la 2.0.2 falla en Python 3.12+). Los consumidores corren en un hilo aparte porque la librería es bloqueante |
+| Kafka | `kafka-python` 3.0 (la 2.0.2 falla en Python 3.12+). Los consumidores corren en un hilo aparte porque la librería es bloqueante |
 | gRPC | `grpcio` + `grpcio-tools` |
 | WebSocket | `websockets` |
 | Kafka (broker) | Docker Compose, modo KRaft, en `infra/docker-compose.yml` |
@@ -376,3 +376,4 @@ Ese orden evita perder un evento que llegue entre la consulta y la suscripción.
 | Versión | Fecha | Cambio | Acordado por |
 |---|---|---|---|
 | 1.0 | 2026-11-12 | Versión inicial | _pendiente_ |
+| 1.1 | 2026-11-12 | Python 3.12 o superior y versiones fijadas en `requirements.txt`; se agrega `contracts/pedido.schema.json` | _pendiente_ |

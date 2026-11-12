@@ -1,0 +1,9 @@
+fastapi==0.162.5
+uvicorn==0.54.0
+pydantic==2.14.3
+httpx==0.28.1
+kafka-python==3.0.13
+grpcio==1.85.1
+grpcio-tools==1.85.1
+protobuf==7.36.2
+websockets==17.4

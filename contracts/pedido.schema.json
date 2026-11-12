@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pedido CampusBite",
+  "$ref": "#/$defs/pedido",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "fecha": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "centavos": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "idEstudiante": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20
+    },
+    "idProducto": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cantidad": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "producto": {
+      "title": "Producto del menú",
+      "type": "object",
+      "required": ["idProducto", "nombre", "precio"],
+      "additionalProperties": false,
+      "properties": {
+        "idProducto": { "$ref": "#/$defs/idProducto" },
+        "nombre": { "type": "string", "minLength": 1 },
+        "precio": { "$ref": "#/$defs/centavos" }
+      }
+    },
+    "itemSolicitud": {
+      "type": "object",
+      "required": ["idProducto", "cantidad"],
+      "additionalProperties": false,
+      "properties": {
+        "idProducto": { "$ref": "#/$defs/idProducto" },
+        "cantidad": { "$ref": "#/$defs/cantidad" }
+      }
+    },
+    "solicitudPedido": {
+      "title": "Cuerpo de POST /pedidos",
+      "type": "object",
+      "required": ["idEstudiante", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "idEstudiante": { "$ref": "#/$defs/idEstudiante" },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/itemSolicitud" }
+        }
+      }
+    },
+    "itemPedido": {
+      "type": "object",
+      "required": ["idProducto", "nombre", "cantidad", "precioUnitario", "subtotal"],
+      "additionalProperties": false,
+      "properties": {
+        "idProducto": { "$ref": "#/$defs/idProducto" },
+        "nombre": { "type": "string", "minLength": 1 },
+        "cantidad": { "$ref": "#/$defs/cantidad" },
+        "precioUnitario": { "$ref": "#/$defs/centavos" },
+        "subtotal": { "$ref": "#/$defs/centavos" }
+      }
+    },
+    "pedido": {
+      "title": "Respuesta de POST /pedidos y GET /pedidos/{idPedido}",
+      "type": "object",
+      "required": [
+        "idPedido",
+        "idEstudiante",
+        "items",
+        "total",
+        "estadoPreparacion",
+        "estadoPago",
+        "estadoFacturacion",
+        "entregado",
+        "fechaCreacion"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "idPedido": { "$ref": "#/$defs/uuid" },
+        "idEstudiante": { "$ref": "#/$defs/idEstudiante" },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/itemPedido" }
+        },
+        "total": { "$ref": "#/$defs/centavos" },
+        "estadoPreparacion": { "enum": ["RECIBIDO", "EN_PREPARACION", "LISTO"] },
+        "estadoPago": { "enum": ["PENDIENTE", "PAGADO"] },
+        "estadoFacturacion": { "enum": [null, "FACTURADO", "FACTURACION_PENDIENTE"] },
+        "entregado": { "type": "boolean" },
+        "fechaCreacion": { "$ref": "#/$defs/fecha" }
+      }
+    },
+    "itemEvento": {
+      "type": "object",
+      "required": ["idProducto", "nombre", "cantidad", "precioUnitario"],
+      "additionalProperties": false,
+      "properties": {
+        "idProducto": { "$ref": "#/$defs/idProducto" },
+        "nombre": { "type": "string", "minLength": 1 },
+        "cantidad": { "$ref": "#/$defs/cantidad" },
+        "precioUnitario": { "$ref": "#/$defs/centavos" }
+      }
+    },
+    "eventoPedidoCreado": {
+      "title": "Valor del topic pedido.creado",
+      "type": "object",
+      "required": ["idEvento", "idPedido", "idEstudiante", "items", "total", "fecha"],
+      "additionalProperties": false,
+      "properties": {
+        "idEvento": { "$ref": "#/$defs/uuid" },
+        "idPedido": { "$ref": "#/$defs/uuid" },
+        "idEstudiante": { "$ref": "#/$defs/idEstudiante" },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/itemEvento" }
+        },
+        "total": { "$ref": "#/$defs/centavos" },
+        "fecha": { "$ref": "#/$defs/fecha" }
+      }
+    },
+    "eventoPedidoEstado": {
+      "title": "Valor del topic pedido.estado",
+      "type": "object",
+      "required": ["idEvento", "idPedido", "tipo", "estado", "origen", "detalle", "fecha"],
+      "additionalProperties": false,
+      "properties": {
+        "idEvento": { "$ref": "#/$defs/uuid" },
+        "idPedido": { "$ref": "#/$defs/uuid" },
+        "tipo": { "enum": ["PREPARACION", "PAGO", "FACTURACION", "ENTREGA"] },
+        "estado": { "type": "string" },
+        "origen": { "enum": ["cocina", "caja", "facturacion", "api"] },
+        "detalle": { "type": "object" },
+        "fecha": { "$ref": "#/$defs/fecha" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "tipo": { "const": "PREPARACION" },
+            "estado": { "enum": ["EN_PREPARACION", "LISTO"] },
+            "origen": { "const": "cocina" }
+          }
+        },
+        {
+          "properties": {
+            "tipo": { "const": "PAGO" },
+            "estado": { "enum": ["PENDIENTE", "PAGADO"] },
+            "origen": { "const": "caja" }
+          }
+        },
+        {
+          "properties": {
+            "tipo": { "const": "FACTURACION" },
+            "estado": { "enum": ["FACTURADO", "FACTURACION_PENDIENTE"] },
+            "origen": { "const": "facturacion" }
+          }
+        },
+        {
+          "properties": {
+            "tipo": { "const": "ENTREGA" },
+            "estado": { "const": "ENTREGADO" },
+            "origen": { "const": "api" }
+          }
+        }
+      ]
+    },
+    "error": {
+      "title": "Cuerpo de error REST",
+      "type": "object",
+      "required": ["error", "mensaje"],
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "enum": [
+            "FALTA_IDEMPOTENCY_KEY",
+            "DATOS_INVALIDOS",
+            "SOLICITUD_EN_CURSO",
+            "CLAVE_REUTILIZADA",
+            "SERVICIO_NO_DISPONIBLE",
+            "PEDIDO_NO_ENCONTRADO",
+            "PEDIDO_NO_LISTO",
+            "PEDIDO_NO_PAGADO",
+            "COBRO_NO_ENCONTRADO"
+          ]
+        },
+        "mensaje": { "type": "string" }
+      }
+    }
+  }
+}
