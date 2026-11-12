@@ -1,0 +1,27 @@
+# SO / editor
+.DS_Store
+.idea/
+.vscode/
+.claude/
+
+# Material de la asignatura (no se sube)
+Documentos/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Java / Maven / Gradle
+target/
+build/
+.gradle/
+*.class
+
+# Node
+node_modules/
+
+# Logs
+*.log
