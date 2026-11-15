@@ -1,26 +1,28 @@
-# Prueba gRPC: servicio no disponible
+# Pruebas de gRPC y comunicación Caja-Facturación
 
-- **Escenario:** resiliencia ante la caída del servicio Caja.
-- **Responsable:** Integrante 3
+## Prueba 1: servicio gRPC no disponible
 
-## Ejecución
+- **Escenario:** el cliente llama a un puerto sin servidor gRPC disponible.
+- **Configuración:** timeout del cliente de 2 segundos.
+- **Pedido usado:** `a8b4c921-5f73-4f82-9ec4-b83202a8ad01`.
+- **Ejecución:** se llamó a Caja usando `localhost:50052`, puerto sin servidor escuchando.
+- **Resultado obtenido:** gRPC respondió `DEADLINE_EXCEEDED`; el detalle fue `Deadline Exceeded`.
+- **Tiempo observado:** 2,02 segundos.
+- **Resultado esperado:** la llamada termina al alcanzar el límite, sin esperar indefinidamente.
+- **Conclusión:** el timeout de 2 segundos del cliente se aplicó correctamente.
 
-1. Iniciar Facturación con el cliente gRPC configurado con timeout de 2 s.
-2. Detener el servidor gRPC de Caja.
-3. Intentar llamar `ConfirmarPago` para un pedido de prueba.
-4. Registrar el error y el tiempo observado.
+## Prueba 2: confirmación de pago y facturación
 
-## Resultado esperado
+- **Pedido usado:** `a8b4c921-5f73-4f82-9ec4-b83202a8ad01`.
+- **Resultado de Caja:** el pago pasó a `PAGADO`; confirmación `PAG-3F40D3BBC3CA`.
+- **Resultado de Facturación:** Kafka recibió `FACTURACION/FACTURADO`; factura `FAC-04CAAF4A013D`.
+- **Eventos observados:** primero `PAGO/PAGADO` y luego `FACTURACION/FACTURADO`.
+- **Conclusión:** Facturación consultó a Caja por gRPC y publicó la factura después de confirmar el pago.
 
-La llamada termina sin esperar indefinidamente. El cliente recibe
-`UNAVAILABLE` o `DEADLINE_EXCEEDED`, y Facturación maneja el error
-según los reintentos acordados.
+## Prueba 3: reintento idempotente de pago
 
-## Resultado obtenido (real)
-
-Completar después de ejecutar la prueba; no inventar el resultado.
-
-## Explicación
-
-gRPC permite fijar un límite de espera. La llamada puede fallar si el servicio
-no responde, y el cliente debe manejar ese error de forma controlada.
+- **Pedido usado:** `a8b4c921-5f73-4f82-9ec4-b83202a8ad01`.
+- **Ejecución:** se repitió el `POST /caja/pagos/{id_pedido}` con el mismo pedido.
+- **Resultado obtenido:** Caja devolvió la misma confirmación `PAG-3F40D3BBC3CA`.
+- **Eventos observados:** Kafka contenía un solo evento `PAGO/PAGADO` para ese pedido.
+- **Conclusión:** repetir el pago no generó una segunda confirmación ni un segundo evento de pago.
