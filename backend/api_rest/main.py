@@ -8,17 +8,18 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-import config
-from errores import ErrorApi
-from idempotencia import RegistroIdempotencia
-from mensajeria import ConsumidorEstados, PublicadorKafka
-from menu import MENU
-from modelos import Error, Pedido, Producto, SolicitudPedido
-from repositorio import RepositorioPedidos
-from servicio import ServicioPedidos
+from backend.kafka.producer import EventProducer
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-logging.getLogger("kafka").setLevel(logging.WARNING)
+from . import config
+from .consumidor import ConsumidorEstadosApi
+from .errores import ErrorApi
+from .idempotencia import RegistroIdempotencia
+from .menu import MENU
+from .modelos import Error, Pedido, Producto, SolicitudPedido
+from .repositorio import RepositorioPedidos
+from .servicio import ServicioPedidos
+
+log = logging.getLogger("api")
 
 RESPUESTAS_ERROR = {
     400: {"model": Error},
@@ -32,16 +33,14 @@ def respuesta_error(estado_http, codigo, mensaje):
     return JSONResponse(status_code=estado_http, content={"error": codigo, "mensaje": mensaje})
 
 
-def crear_app(servicio, publicador=None, consumidor=None):
+def crear_app(servicio, consumidor=None):
     @asynccontextmanager
     async def ciclo_de_vida(app):
         if consumidor is not None:
-            consumidor.start()
+            consumidor.iniciar_en_hilo()
         yield
         if consumidor is not None:
             consumidor.detener()
-        if publicador is not None:
-            publicador.cerrar()
 
     app = FastAPI(title="CampusBite - API de Pedidos", version="1.1", lifespan=ciclo_de_vida)
     app.add_middleware(
@@ -91,22 +90,24 @@ def crear_app(servicio, publicador=None, consumidor=None):
     return app
 
 
-repositorio = RepositorioPedidos()
-publicador = PublicadorKafka(config.KAFKA_SERVIDORES, config.TIMEOUT_KAFKA_S)
-consumidor = ConsumidorEstados(
-    config.KAFKA_SERVIDORES,
-    config.TOPIC_PEDIDO_ESTADO,
-    config.GRUPO_CONSUMIDOR,
-    repositorio,
-    config.REINTENTO_CONSUMIDOR_S,
-)
-servicio = ServicioPedidos(
-    repositorio,
-    RegistroIdempotencia(config.VENCIMIENTO_CLAVE_S),
-    publicador,
-    MENU,
-)
-app = crear_app(servicio, publicador, consumidor)
+def construir_app():
+    repositorio = RepositorioPedidos()
+    productor = EventProducer()
+    servicio = ServicioPedidos(
+        repositorio,
+        RegistroIdempotencia(config.VENCIMIENTO_CLAVE_S),
+        productor,
+        MENU,
+    )
+    consumidor = ConsumidorEstadosApi(repositorio, config.GRUPO_CONSUMIDOR, producer=productor)
+    return crear_app(servicio, consumidor)
+
+
+def principal():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)-14s %(message)s")
+    log.info("API de Pedidos en el puerto %s", config.PUERTO)
+    uvicorn.run(construir_app(), host=config.HOST, port=config.PUERTO)
+
 
 if __name__ == "__main__":
-    uvicorn.run(app, host=config.HOST, port=config.PUERTO)
+    principal()

@@ -5,32 +5,40 @@ import uuid
 
 from fastapi.testclient import TestClient
 
-from errores import ErrorPublicacion
-from idempotencia import RegistroIdempotencia
-from main import crear_app
-from menu import MENU
-from modelos import SolicitudPedido
-from repositorio import RepositorioPedidos
-from servicio import ServicioPedidos
+from backend.api_rest.consumidor import ConsumidorEstadosApi
+from backend.api_rest.idempotencia import RegistroIdempotencia
+from backend.api_rest.main import crear_app
+from backend.api_rest.menu import MENU
+from backend.api_rest.modelos import SolicitudPedido
+from backend.api_rest.repositorio import RepositorioPedidos
+from backend.api_rest.servicio import ServicioPedidos
+from backend.kafka import config as kafka_config
+from backend.kafka.eventos import crear_evento_estado, crear_evento_pedido_creado
+from backend.kafka.producer import KafkaNoDisponible
 
 
-class PublicadorFalso:
+class ProductorFalso:
     def __init__(self):
         self.mensajes = []
         self.fallar = False
         self.demora_s = 0
         self._lock = threading.Lock()
 
-    def publicar(self, topic, clave, valor):
+    def _registrar(self, topic, evento):
         if self.demora_s:
             time.sleep(self.demora_s)
         if self.fallar:
-            raise ErrorPublicacion("Kafka no disponible")
+            raise KafkaNoDisponible("Kafka no disponible")
         with self._lock:
-            self.mensajes.append((topic, clave, valor))
+            self.mensajes.append((topic, evento["idPedido"], evento))
+        return 0, len(self.mensajes)
 
-    def cerrar(self):
-        pass
+    def publicar_pedido_creado(self, pedido):
+        return self._registrar(kafka_config.TOPIC_PEDIDO_CREADO, crear_evento_pedido_creado(pedido))
+
+    def publicar_estado(self, id_pedido, tipo, estado, origen, detalle=None):
+        evento = crear_evento_estado(id_pedido, tipo, estado, origen, detalle)
+        return self._registrar(kafka_config.TOPIC_PEDIDO_ESTADO, evento)
 
 
 SOLICITUD = {
@@ -57,7 +65,7 @@ def evento_estado(id_pedido, tipo, estado, origen, id_evento=None):
 class BaseApi(unittest.TestCase):
     def setUp(self):
         self.repositorio = RepositorioPedidos()
-        self.publicador = PublicadorFalso()
+        self.publicador = ProductorFalso()
         self.servicio = ServicioPedidos(self.repositorio, RegistroIdempotencia(30), self.publicador, MENU)
         self.cliente = TestClient(crear_app(self.servicio))
 
@@ -149,7 +157,7 @@ class TestCrearPedido(BaseApi):
 
 class TestConcurrencia(unittest.TestCase):
     def test_dos_solicitudes_simultaneas_con_la_misma_clave(self):
-        publicador = PublicadorFalso()
+        publicador = ProductorFalso()
         publicador.demora_s = 0.5
         servicio = ServicioPedidos(RepositorioPedidos(), RegistroIdempotencia(30), publicador, MENU)
         solicitud = SolicitudPedido(**SOLICITUD)
@@ -227,6 +235,17 @@ class TestConsultarYEstados(BaseApi):
         self.assertEqual(self.repositorio.aplicar_evento(evento), "DESCONOCIDO")
 
 
+class TestConsumidor(BaseApi):
+    def test_consumidor_aplica_eventos_de_pedido_estado(self):
+        id_pedido = self.crear().json()["idPedido"]
+        consumidor = ConsumidorEstadosApi(self.repositorio, "api", producer=self.publicador)
+        self.assertEqual(consumidor.topic, "pedido.estado")
+        self.assertEqual(consumidor.group_id, "api")
+        resultado = consumidor.procesar(evento_estado(id_pedido, "PREPARACION", "EN_PREPARACION", "cocina"))
+        self.assertEqual(resultado, "APLICADO")
+        self.assertEqual(self.cliente.get(f"/pedidos/{id_pedido}").json()["estadoPreparacion"], "EN_PREPARACION")
+
+
 class TestEntregar(BaseApi):
     def preparar(self, listo=True, pagado=True):
         id_pedido = self.crear().json()["idPedido"]
@@ -258,7 +277,7 @@ class TestEntregar(BaseApi):
         entregas = [m for m in self.publicador.mensajes if m[0] == "pedido.estado"]
         self.assertEqual(len(entregas), 1)
         self.assertEqual(entregas[0][2]["estado"], "ENTREGADO")
-        self.assertEqual(self.repositorio.aplicar_evento(entregas[0][2]), "DUPLICADO")
+        self.assertEqual(self.repositorio.aplicar_evento(entregas[0][2]), "SIN_CAMBIO")
 
     def test_entrega_con_kafka_caido(self):
         id_pedido = self.preparar()

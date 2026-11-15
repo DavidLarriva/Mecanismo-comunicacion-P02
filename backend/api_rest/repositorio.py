@@ -43,9 +43,8 @@ class RepositorioPedidos:
             pedido = self._pedidos.get(id_pedido)
             return copy.deepcopy(pedido) if pedido else None
 
-    def marcar_entregado(self, id_pedido, id_evento):
+    def marcar_entregado(self, id_pedido):
         with self._lock:
-            self._eventos_procesados.add(id_evento)
             pedido = self._pedidos.get(id_pedido)
             if pedido:
                 pedido["entregado"] = True

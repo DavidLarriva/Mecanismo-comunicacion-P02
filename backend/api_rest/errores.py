@@ -4,7 +4,3 @@ class ErrorApi(Exception):
         self.estado_http = estado_http
         self.codigo = codigo
         self.mensaje = mensaje
-
-
-class ErrorPublicacion(Exception):
-    pass

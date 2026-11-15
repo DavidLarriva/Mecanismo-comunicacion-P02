@@ -5,9 +5,10 @@ import threading
 import uuid
 from datetime import datetime, timezone
 
-import config
-import idempotencia
-from errores import ErrorApi, ErrorPublicacion
+from backend.kafka.producer import KafkaNoDisponible
+
+from . import idempotencia
+from .errores import ErrorApi
 
 log = logging.getLogger("api.servicio")
 
@@ -22,10 +23,10 @@ def huella_solicitud(solicitud):
 
 
 class ServicioPedidos:
-    def __init__(self, repositorio, registro, publicador, menu):
+    def __init__(self, repositorio, registro, productor, menu):
         self._repositorio = repositorio
         self._registro = registro
-        self._publicador = publicador
+        self._productor = productor
         self._menu = menu
         self._lock_entregas = threading.Lock()
 
@@ -60,22 +61,11 @@ class ServicioPedidos:
             "entregado": False,
             "fechaCreacion": ahora_iso(),
         }
-        evento = {
-            "idEvento": str(uuid.uuid4()),
-            "idPedido": pedido["idPedido"],
-            "idEstudiante": pedido["idEstudiante"],
-            "items": [
-                {k: item[k] for k in ("idProducto", "nombre", "cantidad", "precioUnitario")}
-                for item in items
-            ],
-            "total": pedido["total"],
-            "fecha": pedido["fechaCreacion"],
-        }
 
         self._repositorio.guardar(pedido)
         try:
-            self._publicador.publicar(config.TOPIC_PEDIDO_CREADO, pedido["idPedido"], evento)
-        except ErrorPublicacion as error:
+            self._productor.publicar_pedido_creado(pedido)
+        except KafkaNoDisponible as error:
             self._repositorio.eliminar(pedido["idPedido"])
             self._registro.liberar(clave, reserva.token)
             log.warning("Kafka no confirmó el pedido %s: %s", pedido["idPedido"], error)
@@ -106,23 +96,14 @@ class ServicioPedidos:
             if pedido["estadoPago"] != "PAGADO":
                 raise ErrorApi(409, "PEDIDO_NO_PAGADO", f"El pago del pedido está {pedido['estadoPago']}")
 
-            evento = {
-                "idEvento": str(uuid.uuid4()),
-                "idPedido": id_pedido,
-                "tipo": "ENTREGA",
-                "estado": "ENTREGADO",
-                "origen": "api",
-                "detalle": {},
-                "fecha": ahora_iso(),
-            }
             try:
-                self._publicador.publicar(config.TOPIC_PEDIDO_ESTADO, id_pedido, evento)
-            except ErrorPublicacion as error:
+                self._productor.publicar_estado(id_pedido, "ENTREGA", "ENTREGADO", "api")
+            except KafkaNoDisponible as error:
                 log.warning("Kafka no confirmó la entrega del pedido %s: %s", id_pedido, error)
                 raise ErrorApi(503, "SERVICIO_NO_DISPONIBLE", "No se pudo registrar la entrega, intente de nuevo")
 
             log.info("Pedido %s entregado", id_pedido)
-            return self._repositorio.marcar_entregado(id_pedido, evento["idEvento"])
+            return self._repositorio.marcar_entregado(id_pedido)
 
     def _armar_items(self, solicitud):
         items = []
