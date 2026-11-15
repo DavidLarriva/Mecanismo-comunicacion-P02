@@ -1,4 +1,3 @@
-# Uso:  docker compose -f infra/docker-compose.yml up -d
 services:
   kafka:
     image: apache/kafka:3.8.1
@@ -9,7 +8,7 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      # Los servicios Python corren en el host (fuera de Docker) y se conectan a localhost:9092
+      # Los programas Python se ejecutan en el host (Windows/Mac), fuera de Docker.
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
@@ -18,4 +17,44 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Sin creación automática (crearía topics de 1 partición): los crea kafka-init
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      # "healthy" cuando el broker ya responde a peticiones de clientes
+      test:
+        - CMD-SHELL
+        - /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+
+  # Servicio de un solo uso: espera a Kafka, crea los topics y termina (Exited 0).
+  # Comparte la red de "kafka" para poder usar localhost:9092 (el listener anunciado).
+  # Es idempotente (--if-not-exists). Si cambia backend/kafka/config.py (TOPICS), cambiar también
+  # aquí (hay un test que lo vigila).
+  kafka-init:
+    image: apache/kafka:3.8.1
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    network_mode: "service:kafka"
+    restart: "no"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+
+        echo "Esperando a Kafka..."
+        until /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1; do
+          sleep 2
+        done
+
+        echo "Creando topics..."
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic pedido.creado --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic pedido.estado --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic pedido.dlq --partitions 1 --replication-factor 1
+
+        echo "Topics listos:"
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
