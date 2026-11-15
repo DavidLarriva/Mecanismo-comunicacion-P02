@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package campusbite.caja;
+
+service Caja {
+  rpc ConfirmarPago (ConfirmarPagoRequest)
+      returns (ConfirmarPagoResponse);
+}
+
+message ConfirmarPagoRequest {
+  string id_pedido = 1;
+}
+
+enum EstadoPago {
+  ESTADO_PAGO_DESCONOCIDO = 0;
+  PAGADO = 1;
+  PENDIENTE = 2;
+  NO_ENCONTRADO = 3;
+}
+
+message ConfirmarPagoResponse {
+  string id_pedido = 1;
+  EstadoPago estado = 2;
+  string id_confirmacion = 3;
+  int64 monto = 4;
+  bool repetida = 5;
+}
