@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<!-- Generado con IA (bitácora #2, Claude), revisado y adaptado por Cinthy. -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CampusBite · Mi pedido</title>
+<style>
+  :root { --fondo:#f6f4ef; --tarjeta:#fff; --texto:#1f2328; --suave:#6b7280; --borde:#e5e2da;
+          --acento:#0f766e; --ok:#15803d; --aviso:#b45309; --error:#b91c1c; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--fondo); color:var(--texto); }
+  header { padding:18px 24px; background:var(--acento); color:#fff; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  header h1 { margin:0; font-size:20px; }
+  #conexion { font-size:13px; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,.18); }
+  main { max-width:1000px; margin:20px auto; padding:0 16px; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:800px) { main { grid-template-columns:1fr; } }
+  section { background:var(--tarjeta); border:1px solid var(--borde); border-radius:12px; padding:16px; }
+  h2 { margin:0 0 12px; font-size:16px; }
+  label { font-size:13px; color:var(--suave); display:block; margin-bottom:4px; }
+  input { width:100%; padding:8px; border:1px solid var(--borde); border-radius:8px; font:inherit; }
+  .producto { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--borde); }
+  .producto input { width:64px; }
+  button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--acento); background:var(--acento); color:#fff; cursor:pointer; }
+  button.secundario { background:#fff; color:var(--acento); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .fila { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  #mensaje { margin-top:10px; font-size:14px; min-height:20px; }
+  .ok { color:var(--ok); } .aviso { color:var(--aviso); } .error { color:var(--error); }
+  .linea { display:flex; gap:6px; margin:12px 0; }
+  .paso { flex:1; text-align:center; padding:10px 4px; border-radius:8px; background:#f1efe9; color:var(--suave); font-size:13px; font-weight:600; transition:all .3s; }
+  .paso.hecho { background:#ccfbf1; color:var(--acento); }
+  .paso.actual { background:var(--acento); color:#fff; }
+  .datos { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:14px; }
+  .datos dt { color:var(--suave); }
+  .datos dd { margin:0; font-weight:600; }
+  #log { grid-column:1 / -1; }
+  #eventos { font-family:ui-monospace, Consolas, monospace; font-size:12px; max-height:260px; overflow:auto; background:#111827; color:#e5e7eb; border-radius:8px; padding:10px; margin:0; white-space:pre-wrap; }
+  code { background:#f1efe9; padding:1px 5px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CampusBite · Mi pedido</h1>
+  <span id="conexion">WebSocket: desconectado</span>
+</header>
+
+<main>
+  <section>
+    <h2>1. Hacer un pedido</h2>
+    <label for="estudiante">Cédula o código de estudiante</label>
+    <input id="estudiante" value="0102030405">
+    <div id="menu" style="margin-top:12px">Cargando menú…</div>
+    <div class="fila">
+      <button id="btnPedir">Crear pedido</button>
+      <button id="btnReintentar" class="secundario" disabled title="Reenvía el MISMO pedido con la MISMA Idempotency-Key">Reenviar (misma clave)</button>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--borde);margin:16px 0">
+    <label for="seguir">…o seguir un pedido existente (idPedido)</label>
+    <div class="fila" style="margin-top:0">
+      <input id="seguir" placeholder="7f3c2a1e-…" style="flex:1">
+      <button id="btnSeguir" class="secundario">Seguir</button>
+    </div>
+    <div id="mensaje"></div>
+  </section>
+
+  <section>
+    <h2>2. Estado de mi pedido</h2>
+    <div class="datos">
+      <dt>Pedido</dt><dd id="idPedido">—</dd>
+      <dt>Total</dt><dd id="total">—</dd>
+    </div>
+    <div class="linea" id="linea">
+      <div class="paso" data-estado="RECIBIDO">Recibido</div>
+      <div class="paso" data-estado="EN_PREPARACION">En preparación</div>
+      <div class="paso" data-estado="LISTO">Listo</div>
+      <div class="paso" data-estado="ENTREGADO">Entregado</div>
+    </div>
+    <div class="datos">
+      <dt>Pago</dt><dd id="pago">—</dd>
+      <dt>Facturación</dt><dd id="facturacion">—</dd>
+    </div>
+    <div class="fila">
+      <button id="btnCaida" class="secundario" disabled>Simular caída de conexión</button>
+      <button id="btnVolver" class="secundario" disabled>Volver a conectar</button>
+    </div>
+  </section>
+
+  <section id="log">
+    <h2>Registro (evidencia para las pruebas)</h2>
+    <pre id="eventos"></pre>
+  </section>
+</main>
+
+<script>
+// ---------- Configuración (se puede cambiar con ?api=...&ws=... en la URL) ----------
+const params = new URLSearchParams(location.search);
+const API = params.get("api") || "http://localhost:8000";
+const WS_URL = params.get("ws") || "ws://localhost:8765";
+const REINTENTO_MS = 3000;                     // contrato: reintentar cada 3 s
+
+// ---------- Estado de la página ----------
+let menu = [];
+let idPedido = null;
+let solicitudPendiente = null;                 // {clave, cuerpo} para reintentar con la MISMA clave
+let ws = null;
+let caidaSimulada = false;                     // true: el usuario pidió cortar; no reconectar solo
+let temporizador = null;
+// Estado mostrado. Cada dimensión solo AVANZA (ver fusionar()).
+let estado = { preparacion: null, pago: null, facturacion: null, entregado: false, total: null };
+
+const $ = (id) => document.getElementById(id);
+const dinero = (centavos) => "$" + (centavos / 100).toFixed(2);   // contrato: dinero en centavos
+const hora = () => new Date().toLocaleTimeString();
+
+function registrar(texto, clase = "") {
+  const linea = `[${hora()}] ${texto}\n`;
+  $("eventos").textContent += linea;
+  $("eventos").scrollTop = $("eventos").scrollHeight;
+  console.log(linea.trim());
+}
+function mensaje(texto, clase = "") { $("mensaje").textContent = texto; $("mensaje").className = clase; }
+function uuid() {                               // crypto.randomUUID necesita contexto seguro
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c =>
+    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+}
+
+// ---------- 1. Menú ----------
+async function cargarMenu() {
+  try {
+    const r = await fetch(`${API}/menu`);
+    menu = await r.json();
+    $("menu").innerHTML = menu.map(p => `
+      <div class="producto">
+        <span>${p.nombre} <small style="color:var(--suave)">${dinero(p.precio)}</small></span>
+        <input type="number" min="0" value="0" data-id="${p.idProducto}" aria-label="Cantidad de ${p.nombre}">
+      </div>`).join("");
+  } catch (e) {
+    $("menu").innerHTML = `<span class="error">No se pudo cargar el menú de ${API}. ¿Está corriendo la API?</span>`;
+  }
+}
+
+// ---------- 2. Crear pedido (REST, idempotente) ----------
+async function crearPedido() {
+  const items = [...document.querySelectorAll("#menu input")]
+    .map(i => ({ idProducto: i.dataset.id, cantidad: parseInt(i.value, 10) || 0 }))
+    .filter(i => i.cantidad > 0);
+  if (!items.length) return mensaje("Elige al menos un producto.", "aviso");
+  // La clave se genera UNA vez por pedido y se reutiliza en cada reintento
+  solicitudPendiente = { clave: uuid(), cuerpo: { idEstudiante: $("estudiante").value.trim(), items } };
+  await enviarPedido();
+}
+
+async function enviarPedido() {
+  const { clave, cuerpo } = solicitudPendiente;
+  $("btnReintentar").disabled = false;
+  registrar(`POST /pedidos  Idempotency-Key=${clave.slice(0, 8)}…`);
+  let r, datos;
+  try {
+    r = await fetch(`${API}/pedidos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": clave },
+      body: JSON.stringify(cuerpo),
+    });
+    datos = await r.json();
+  } catch (e) {
+    registrar("La API no responde: reintenta con el botón (misma clave).");
+    return mensaje("La API no responde. Reintenta con «Reenviar (misma clave)».", "error");
+  }
+  registrar(`← ${r.status} ${datos.error || ""}`);
+  if (r.status === 201 || r.status === 200) {
+    mensaje(r.status === 201 ? "Pedido creado." : "Reintento: la API devolvió el MISMO pedido (idempotencia).", "ok");
+    await seguirPedido(datos.idPedido, datos);
+  } else if (r.status === 409 || r.status === 503) {
+    mensaje(`${datos.mensaje} Puedes reintentar: se usará la misma clave.`, "aviso");
+  } else {
+    mensaje(datos.mensaje || "Error", "error");
+  }
+}
+
+// ---------- 3. Seguir un pedido: primero WebSocket, después GET ----------
+async function seguirPedido(id, pedidoInicial = null) {
+  if (idPedido && idPedido !== id && ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ accion: "desuscribir", idPedido }));
+  }
+  idPedido = id;
+  estado = { preparacion: null, pago: null, facturacion: null, entregado: false, total: null };
+  if (pedidoInicial) aplicarPedido(pedidoInicial, "POST");
+  $("idPedido").textContent = id;
+  $("btnCaida").disabled = false;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    suscribir();                                // ya conectado: suscribir y luego GET
+  } else {
+    conectar();                                 // al abrir: suscribir y luego GET
+  }
+}
+
+function conectar() {
+  clearTimeout(temporizador);
+  if (!idPedido || caidaSimulada) return;
+  registrar(`Abriendo WebSocket ${WS_URL} (HTTP Upgrade → 101 Switching Protocols)…`);
+  ponerConexion("conectando…");
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => { ponerConexion("conectado ●"); registrar("WebSocket abierto"); suscribir(); };
+  ws.onmessage = (e) => recibir(JSON.parse(e.data));
+  ws.onclose = () => {
+    ponerConexion("desconectado");
+    if (caidaSimulada) { registrar("WebSocket cerrado (caída simulada)."); return; }
+    registrar(`WebSocket cerrado. Reintento en ${REINTENTO_MS / 1000} s…`);
+    temporizador = setTimeout(conectar, REINTENTO_MS);
+  };
+  ws.onerror = () => {};                        // onclose se encarga del reintento
+}
+
+function suscribir() {
+  ws.send(JSON.stringify({ accion: "suscribir", idPedido }));
+  registrar(`→ suscribir ${idPedido.slice(0, 8)}`);
+}
+
+async function consultarEstado() {
+  // DESPUÉS de suscribirse: si un evento llegó antes, el GET lo trae; si llega después, el WebSocket.
+  try {
+    const r = await fetch(`${API}/pedidos/${idPedido}`);
+    const datos = await r.json();
+    if (!r.ok) return registrar(`GET /pedidos → ${r.status} ${datos.error}`);
+    registrar(`GET /pedidos/${idPedido.slice(0, 8)} → 200 preparación=${datos.estadoPreparacion} pago=${datos.estadoPago} facturación=${datos.estadoFacturacion} entregado=${datos.entregado}`);
+    aplicarPedido(datos, "GET");
+  } catch (e) {
+    registrar("GET falló: la API no responde (se mantiene lo recibido por WebSocket).");
+  }
+}
+
+function recibir(msg) {
+  if (msg.tipo === "suscrito") {
+    registrar(`← suscrito ${msg.idPedido.slice(0, 8)}`);
+    consultarEstado();
+  } else if (msg.tipo === "estado") {
+    const ev = msg.evento;
+    if (ev.idPedido !== idPedido) return;
+    registrar(`← push ${ev.tipo}/${ev.estado} (origen: ${ev.origen})`);
+    aplicarEvento(ev);
+  } else if (msg.tipo === "error") {
+    registrar(`← error: ${msg.mensaje}`);
+  }
+}
+
+// ---------- Fusión de estado ----------
+// El GET y los eventos pueden llegar en cualquier orden. Para que un GET "viejo" no
+// retroceda lo que ya llegó por WebSocket, cada dimensión solo avanza.
+const ORDEN_PREP = ["RECIBIDO", "EN_PREPARACION", "LISTO"];
+const ORDEN_PAGO = ["PENDIENTE", "PAGADO"];
+const ORDEN_FACT = ["FACTURACION_PENDIENTE", "FACTURADO"];
+function avanzar(actual, nuevo, orden) {
+  if (!nuevo) return actual;
+  return orden.indexOf(nuevo) > orden.indexOf(actual) ? nuevo : actual;
+}
+function aplicarPedido(p, origen) {
+  estado.preparacion = avanzar(estado.preparacion, p.estadoPreparacion, ORDEN_PREP);
+  estado.pago = avanzar(estado.pago, p.estadoPago, ORDEN_PAGO);
+  estado.facturacion = avanzar(estado.facturacion, p.estadoFacturacion, ORDEN_FACT);
+  estado.entregado = estado.entregado || p.entregado;
+  estado.total = p.total;
+  pintar();
+}
+function aplicarEvento(ev) {
+  if (ev.tipo === "PREPARACION") estado.preparacion = avanzar(estado.preparacion, ev.estado, ORDEN_PREP);
+  if (ev.tipo === "PAGO") estado.pago = avanzar(estado.pago, ev.estado, ORDEN_PAGO);
+  if (ev.tipo === "FACTURACION") estado.facturacion = avanzar(estado.facturacion, ev.estado, ORDEN_FACT);
+  if (ev.tipo === "ENTREGA") estado.entregado = true;
+  if (!estado.preparacion) estado.preparacion = "RECIBIDO";   // RECIBIDO no viaja por Kafka
+  pintar();
+}
+function pintar() {
+  const actual = estado.entregado ? "ENTREGADO" : estado.preparacion;
+  const pasos = [...ORDEN_PREP, "ENTREGADO"];
+  const i = pasos.indexOf(actual);
+  document.querySelectorAll(".paso").forEach((el, k) => {
+    el.className = "paso" + (k < i ? " hecho" : k === i ? " actual" : "");
+  });
+  $("total").textContent = estado.total != null ? dinero(estado.total) : "—";
+  $("pago").textContent = estado.pago || "—";
+  $("facturacion").textContent = estado.facturacion || "—";
+  if (estado.preparacion === "LISTO" && !estado.entregado) mensaje("¡Tu pedido está listo! Retíralo en el mostrador.", "ok");
+}
+function ponerConexion(t) { $("conexion").textContent = "WebSocket: " + t; }
+
+// ---------- Prueba de desconexión ----------
+$("btnCaida").onclick = () => {
+  caidaSimulada = true;
+  clearTimeout(temporizador);
+  if (ws) ws.close();
+  $("btnCaida").disabled = true; $("btnVolver").disabled = false;
+};
+$("btnVolver").onclick = () => {
+  caidaSimulada = false;
+  $("btnCaida").disabled = false; $("btnVolver").disabled = true;
+  conectar();                                   // repite: suscribir y luego GET
+};
+
+$("btnPedir").onclick = crearPedido;
+$("btnReintentar").onclick = () => solicitudPendiente && enviarPedido();
+$("btnSeguir").onclick = () => { const id = $("seguir").value.trim(); if (id) seguirPedido(id); };
+cargarMenu();
+registrar(`API: ${API} · WebSocket: ${WS_URL}`);
+</script>
+</body>
+</html>
