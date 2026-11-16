@@ -1,166 +1,110 @@
-# ADR-002: Kafka
+# ADR-002: Uso de Apache Kafka para la comunicación entre servicios
 
-# Guía de inicio: Docker (Kafka) y entorno Python
+- **Estado:** Propuesto
+- **Fecha:** 2026-11-15
+- **Responsable:** Integrante 2 (Carolina Fortmann)
 
-Sistema distribuido de pedidos de la cafetería (CampusBite). Esta guía deja el entorno listo y
-permite ver funcionar la capa Kafka sin necesitar los demás servicios ya que usamos STUBS.
-Todos los comandos se ejecutan **desde la raíz del repositorio** (la carpeta que contiene `backend/`, `infra/` y `docs/`).
+## Contexto
 
-## 0. Requisitos
-| Herramienta | Versión | Comprobar |
-|---|---|---|
-| Docker Desktop (abierto y en ejecución) | reciente, con Compose v2 | `docker --version` y `docker compose version` |
-| Python | 3.12 (el del contrato) | `python --version` |
-| Git | cualquiera | `git --version` |
+El sistema CampusBite requiere que los pedidos registrados por los estudiantes sean comunicados a diferentes servicios internos, como Cocina, Caja, Facturación y Estadísticas. Estos servicios deben recibir y procesar los eventos correspondientes sin que la API de Pedidos tenga que esperar a que todos estén disponibles.
 
-Puerto **9092** libre (Kafka). Los servicios usan además 8000, 8001, 8002, 8765 y 50051 (ver sección 7).
+Una comunicación basada exclusivamente en solicitudes REST síncronas generaría una dependencia directa entre la API y los demás servicios. Por ejemplo, si Cocina estuviera detenida, la API podría verse afectada al intentar comunicarse con ella, aunque el pedido ya pudiera registrarse.
 
-## 1. Levantar Kafka con Docker
-```bash
-docker compose -f infra/docker-compose.yml up -d
-```
-Se crean dos contenedores:
-- `kafka`: el broker (modo KRaft, sin Zookeeper) en `localhost:9092`, con *healthcheck*.
-- `kafka-init`: espera a que Kafka esté listo, **crea los topics** y termina.
+Esta necesidad se relaciona principalmente con los escenarios de calidad priorizados por el equipo:
 
-Verificar (esperar 20–40 s la primera vez; la descarga de la imagen puede tardar más):
-```bash
-docker compose -f infra/docker-compose.yml ps -a
-docker compose -f infra/docker-compose.yml logs kafka-init
-```
-Resultado esperado:
-- `ps -a`: `kafka` en **healthy** y `kafka-init` en **Exited (0)**. (Hay que usar `-a`: `ps` solo no muestra los contenedores terminados.)
-- `logs kafka-init`: termina con `Topics listos:` y la lista `pedido.creado`, `pedido.dlq`, `pedido.estado`.
+- **Disponibilidad:** cuando Kafka no está disponible, la API debe evitar registrar pedidos sin confirmar su publicación y responder con un error `503 SERVICIO_NO_DISPONIBLE`.
+- **Rendimiento:** la API debe responder después de recibir la confirmación de Kafka, sin esperar a que Cocina, Caja o Facturación terminen de procesar el pedido.
+- **Confiabilidad:** los reintentos del cliente deben evitar la creación de pedidos duplicados mediante mecanismos de idempotencia.
+- **Interoperabilidad:** los servicios deben intercambiar eventos que respeten un contrato de comunicación compartido.
 
-Comprobar particiones de un topic:
-```bash
-docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic pedido.creado
-```
-Debe mostrar `PartitionCount: 3`.
+Por estas necesidades, se requiere un mecanismo de mensajería que permita separar la publicación de eventos de su procesamiento por los distintos servicios.
 
-| Topic | Particiones | Uso |
-|---|---|---|
-| `pedido.creado` | 3 | La API publica cada pedido nuevo |
-| `pedido.estado` | 3 | Cocina, Caja, Facturación y API publican cambios de estado |
-| `pedido.dlq` | 1 | Mensajes que fallaron tras 3 reintentos o llegaron mal formados |
+## Decisión
 
-## 2. Crear el entorno virtual e instalar dependencias
-**En la terminal:**
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-Si se bloquea bloquea el script (`la ejecución de scripts está deshabilitada`):
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.venv\Scripts\Activate.ps1
-```
-**Windows (CMD):** `.venv\Scripts\activate.bat`  
-**macOS / Linux:** `source .venv/bin/activate`
+Se decidió utilizar Apache Kafka como mecanismo de mensajería para implementar la comunicación asíncrona entre los servicios de CampusBite.
 
-Con el entorno activo (el prompt muestra `(.venv)`):
-```bash
-python -m pip install --upgrade pip
-pip install -r backend/kafka/requirements.txt
-python -c "import kafka; print(kafka.__version__)"      # debe imprimir 3.0.13
-```
-Para salir del entorno: `deactivate`.
+La solución utiliza un broker Kafka ejecutado mediante Docker Compose en modo KRaft y una capa común de productores y consumidores para facilitar la integración de los diferentes componentes.
 
-> No instale el paquete `kafka` ni `kafka-python` de otra versión: la carpeta `backend/kafka/` comparte nombre con la librería.
-> Por eso hay que ejecutar siempre desde la raíz y con `python -m ...`.
-> Lo mismo aplica a `backend/websockets/` y la librería `websockets`.
+La configuración implementada contempla los siguientes elementos:
 
-## 3. Ejecutar las pruebas (no necesitan Kafka)
-```bash
-python -m pytest backend/kafka/tests -q
-```
-Esperado: `30 passed` (pueden aparecer avisos de librerías; se ignoran).
-
-## 4. Demostración del flujo con Kafka real
-Abrir **una terminal por línea** (cada una con el `.venv` activado y en la raíz del repo):
-```bash
-python -m backend.kafka.stubs.monitor_estados                    # 1. muestra lo que llega a pedido.estado
-python -m backend.cocina.main --demora 3                         # 2. Cocina (real); 3 s de preparación
-python -m backend.kafka.stubs.servicio_stub caja                 # 3. STUB de Caja
-python -m backend.kafka.stubs.servicio_stub facturacion          # 4. STUB de Facturación
-python -m backend.estadisticas.main                              # 5. API REST de Estadísticas (puerto 8002)
-python -m backend.kafka.stubs.simulador_api --n 3 --intervalo 1  # 6. STUB de la API: publica 3 pedidos
-```
-Qué debe verse:
-- Terminal 1 (monitor), por cada pedido: `PREPARACION/EN_PREPARACION`, `PAGO/PAGADO`, `FACTURACION/FACTURADO` y, 3 s después, `PREPARACION/LISTO`.
-- Estadísticas: `curl.exe http://localhost:8002/estadisticas` (en PowerShell se escribe `curl.exe`; en macOS/Linux `curl`; o abrir la URL en el navegador) → `pedidosRecibidos: 3`, `pedidosPagados: 3`.
-- Entregar un pedido (copiar un `idPedido` impreso por el simulador):
-  `python -m backend.kafka.stubs.simulador_api --entregar <idPedido>` → suben `pedidosEntregados` y `ventasEntregadas`.
-
-> Cuando existan los servicios reales (Caja, Facturación, API, Notificaciones), **no ejecutar el stub del mismo servicio**:
-> comparten *consumer group* y se repartirían los pedidos.
-
-Otras pruebas útiles:
-```bash
-python -m backend.kafka.stubs.simulador_api --n 1 --duplicar          # mismo pedido dos veces: el 2.º se ignora
-python -m backend.kafka.stubs.servicio_stub caja --fallar-todo        # fuerza reintentos (1 s, 2 s) y envío a la DLQ
-```
-
-## 5. Comandos de inspección de Kafka
-```bash
-# Topics
-docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
-# Grupos de consumidores y su atraso (LAG = mensajes pendientes)
-docker exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
-docker exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group cocina
-# Leer mensajes de un topic (Ctrl+C para salir)
-docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pedido.creado --from-beginning --property print.key=true
-# Ver la cola de errores (DLQ)
-docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pedido.dlq --from-beginning
-```
-Los *consumer groups* del contrato: `cocina`, `caja`, `facturacion`, `estadisticas` (sobre `pedido.creado`) y
-`api`, `notificaciones`, `estadisticas` (sobre `pedido.estado`).
-
-## 6. Cómo usar la capa Kafka desde otro servicio
-```python
-from backend.kafka.producer import publicar_pedido_creado, publicar_estado, KafkaNoDisponible
-
-try:
-    publicar_pedido_creado(pedido)       # bloquea hasta 5 s esperando la confirmación del broker
-except KafkaNoDisponible:
-    ...                                  # responder 503 SERVICIO_NO_DISPONIBLE y NO registrar el pedido
-
-publicar_estado(id_pedido, "PAGO", "PAGADO", "caja", {"idConfirmacion": "PAG-000123", "monto": 450})
-
-from backend.kafka.consumer_base import ConsumerBase
-class MiServicio(ConsumerBase):
-    def procesar(self, evento): ...      # lanzar una excepción = reintento (1 s, 2 s); al 3.º fallo, a la DLQ
-MiServicio("api", "api", "pedido.estado").iniciar_en_hilo()   # consume en un hilo aparte (FastAPI, WebSocket)
-```
-El formato de los eventos y los estados válidos están en `contratos.md`.
-
-## 7. Apagar y reiniciar
-| Acción | Comando | Efecto |
-|---|---|---|
-| Pausar | `docker compose -f infra/docker-compose.yml stop` | Conserva topics y mensajes |
-| Reanudar | `docker compose -f infra/docker-compose.yml start` | Continúa donde estaba |
-| Apagar y borrar | `docker compose -f infra/docker-compose.yml down` | **Borra los eventos** (no hay volumen); los topics se recrean con `up -d` |
-| Ver registros | `docker compose -f infra/docker-compose.yml logs kafka` | Para diagnosticar |
-
-## 8. Problemas frecuentes
-| Síntoma | Causa y solución |
+| Aspecto | Decisión implementada |
 |---|---|
-| `Cannot connect to the Docker daemon` / `error during connect` | Docker Desktop no está abierto. Abrirlo y esperar a que indique "running". |
-| `port is already allocated` (9092) | Otro programa usa el puerto. Windows: `netstat -ano \| findstr :9092`; macOS/Linux: `lsof -i :9092`. |
-| `no such service: kafka-init` | Se está usando una versión antigua de `infra/docker-compose.yml`. Hacer `git pull` y repetir `down` + `up -d`. |
-| `kafka` queda `unhealthy` | `docker compose -f infra/docker-compose.yml logs kafka`. Suele resolverse con `down` y `up -d`. |
-| `kafka-init` en `Exited (1)` | `docker compose -f infra/docker-compose.yml logs kafka-init`. Repetir `up -d`. |
-| `ModuleNotFoundError: No module named 'backend'` | Se ejecutó fuera de la raíz o sin `python -m`. Volver a la raíz y usar `python -m paquete.modulo`. |
-| `KafkaTimeoutError: Unable to bootstrap` / `KafkaNoDisponible` | Kafka no está encendido o no es alcanzable en `localhost:9092` (`ps -a`). Es el comportamiento esperado si se apaga Kafka: la API respondería 503. |
-| `UnknownTopicOrPartition` | Los topics no existen. Repetir `up -d` o ejecutar `python -m backend.kafka.crear_topics`. |
-| `pip install` falla o versiones raras | Comprobar `python --version` (3.12) y que el `.venv` esté activado. |
-| PowerShell: scripts deshabilitados | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` (solo vale para esa ventana). |
-| Un consumidor no recibe nada | Comprobar el grupo con `kafka-consumer-groups.sh --describe`; si dos procesos comparten grupo, se reparten los mensajes. |
+| Broker | Apache Kafka mediante Docker Compose y KRaft |
+| `pedido.creado` | Topic con 3 particiones para nuevos pedidos |
+| `pedido.estado` | Topic con 3 particiones para cambios de estado |
+| `pedido.dlq` | Topic con 1 partición para mensajes fallidos |
+| Productor común | `EventProducer` |
+| Consumidor común | `ConsumerBase` |
+| Consumer groups | Grupos independientes para los diferentes servicios |
+| Manejo de errores | Reintentos y envío de mensajes fallidos a la DLQ |
+| Deduplicación | Control de eventos repetidos en los consumidores |
 
-## 9. Limitaciones conocidas
-- Datos y deduplicación en memoria: al reiniciar un servicio se pierde su estado (Estadísticas lo reconstruye releyendo Kafka).
-- Un solo broker con `replication_factor=1`: `down` o la pérdida del contenedor borra los eventos.
-- `kafka-python` no ofrece productor idempotente: los duplicados se controlan en los consumidores.
-- Si el productor da *timeout*, el mensaje podría haberse escrito igualmente.
-- Cocina prepara un pedido a la vez; los reintentos bloquean su partición mientras duran.
+Los productores publican eventos en los topics correspondientes y los consumidores los procesan según las responsabilidades de cada servicio. De esta manera, la API no necesita realizar llamadas directas a todos los componentes internos para comunicar la creación de un pedido.
 
+**Archivos de implementación:**
+- `backend/kafka/config.py`
+- `backend/kafka/eventos.py`
+- `backend/kafka/producer.py`
+- `backend/kafka/consumer_base.py`
+- `backend/kafka/idempotencia.py`
+- `backend/kafka/crear_topics.py`
+- `infra/docker-compose.yml`
+
+## Alternativas consideradas
+
+Se identificaron otros mecanismos de comunicación que podrían utilizarse entre los servicios:
+
+| Alternativa | Motivo por el que no se seleccionó como mecanismo principal |
+|---|---|
+| REST síncrono | Requiere que el servicio destinatario esté disponible para responder a la solicitud, generando dependencia temporal entre los componentes. |
+| gRPC | Permite una comunicación eficiente entre servicios, pero mantiene una interacción directa entre el cliente y el servidor. |
+| Sockets TCP | Requiere gestionar directamente aspectos de conexión, intercambio de datos y recuperación de la comunicación. |
+| RabbitMQ | También permite implementar mensajería asíncrona, pero el equipo seleccionó Kafka para trabajar con topics, particiones y grupos de consumidores. |
+
+La selección de Kafka responde a la necesidad de distribuir eventos entre varios servicios, mantenerlos desacoplados y permitir que cada consumidor procese los mensajes de acuerdo con su disponibilidad.
+
+## Justificación
+
+Kafka se seleccionó porque permite implementar una arquitectura basada en eventos, donde los productores y consumidores no necesitan estar disponibles simultáneamente para intercambiar información.
+
+Esta decisión se relaciona con los siguientes conceptos:
+
+- **Persistencia de mensajes:** Kafka almacena los eventos publicados en sus topics durante el periodo de retención configurado. Esto permite que los consumidores puedan recuperar mensajes que todavía no han procesado.
+- **Desacoplamiento temporal:** la API puede publicar un pedido sin esperar a que Cocina, Caja o Facturación terminen de procesarlo. Cada servicio puede consumir el evento cuando esté disponible.
+- **Desacoplamiento lógico:** los servicios intercambian información mediante eventos y topics, sin necesitar conocer directamente la implementación interna de los demás.
+- **Consumer groups:** permiten organizar el consumo de mensajes por servicio y distribuir el procesamiento entre las instancias pertenecientes a un mismo grupo.
+- **Particiones:** permiten distribuir los mensajes de un topic y facilitar el procesamiento paralelo. El orden se conserva dentro de cada partición.
+- **Reintentos y DLQ:** permiten volver a procesar mensajes que presentan errores y separar aquellos que no pueden procesarse después de agotar los intentos configurados.
+- **Idempotencia:** permite evitar que la repetición de un evento produzca efectos duplicados en los consumidores.
+
+La prueba documentada en `docs/pruebas/prueba-kafka.md` permitió comprobar el comportamiento de recuperación del consumidor de Cocina. Se detuvo temporalmente el consumidor, se publicó un pedido mediante la API y posteriormente se reinició Cocina. Se observó que el mismo pedido pasó por los estados `EN_PREPARACION` y `LISTO`, demostrando que el consumidor pudo continuar con el procesamiento después de su interrupción.
+
+## Consecuencias
+
+### Consecuencias positivas
+
+- Los servicios pueden procesar los eventos de manera independiente.
+- La API no necesita esperar a que los consumidores completen sus operaciones.
+- Los mensajes pueden permanecer almacenados mientras un consumidor está temporalmente detenido.
+- Los grupos de consumidores permiten organizar la distribución del procesamiento.
+- Los mecanismos de reintentos y DLQ permiten manejar errores durante el consumo.
+- La comunicación mediante eventos facilita la integración de los servicios desarrollados por los diferentes integrantes.
+
+### Consecuencias negativas y limitaciones
+
+- La solución incorpora un broker Kafka que debe mantenerse disponible para publicar y consumir eventos.
+- La implementación actual utiliza un único broker con factor de replicación 1, por lo que no proporciona alta disponibilidad del broker.
+- La deduplicación en memoria puede perder su información cuando un consumidor se reinicia.
+- Los reintentos pueden retrasar el procesamiento de otros mensajes de una misma partición.
+- La implementación de Cocina procesa los pedidos de manera secuencial.
+- Un timeout del productor puede generar incertidumbre sobre si el mensaje llegó a publicarse, por lo que es necesario considerar la idempotencia en los reintentos.
+- La persistencia de los eventos depende de la configuración y del almacenamiento del broker; en la configuración actual, eliminar el contenedor puede provocar la pérdida de los mensajes.
+
+### Referencias
+
+- Código de la capa Kafka: `backend/kafka/`
+- Servicio de Cocina: `backend/cocina/`
+- Servicio de Estadísticas: `backend/estadisticas/`
+- Contrato de comunicación: `docs/contratos.md`
+- Escenarios de atributos de calidad: `docs/arquitectura/escenarios-calidad.md`
+- Prueba de recuperación del consumidor: `docs/pruebas/prueba-kafka.md`
