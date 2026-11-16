@@ -15,7 +15,7 @@ TOPICS = {TOPIC_PEDIDO_CREADO: 3, TOPIC_PEDIDO_ESTADO: 3, TOPIC_DLQ: 1}
 GRUPOS_PEDIDO_CREADO = {"cocina": "cocina", "caja": "caja",
                         "facturacion": "facturacion", "estadisticas": "estadisticas"}
 GRUPOS_PEDIDO_ESTADO = {"api": "api", "notificaciones": "notificaciones",
-                        "estadisticas": "estadisticas"}
+                        "estadisticas": "estadisticas", "facturacion": "facturacion"}
 GRUPO_MONITOR = "monitor-estados"   # solo para el stub de pruebas (no es del contrato)
 
 # --- Productor: la API espera la confirmación 5 s (contrato) ---
