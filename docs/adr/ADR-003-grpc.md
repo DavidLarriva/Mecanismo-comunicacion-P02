@@ -33,3 +33,5 @@ sincrónica. El timeout evita que Facturación espere indefinidamente.
 - Facturación debe manejar `DEADLINE_EXCEEDED` y `UNAVAILABLE`.
 - Una llamada repetida debe devolver la misma confirmación de pago.
 - El servidor gRPC debe consultar el estado de pago real de Caja.
+- Facturación realiza hasta seis consultas gRPC con esperas de 10 segundos entre intentos. Como el procesamiento es secuencial dentro del consumidor, los pedidos posteriores pueden esperar alrededor de un minuto mientras se procesa uno pendiente. Si cada llamada agota el timeout de 2 segundos, el tiempo total puede ser algo mayor.
+- Se acepta esta espera para la demostración. En una versión de producción se podría mover cada pedido a una cola de trabajo para que un pedido pendiente no retrase la facturación de los demás.

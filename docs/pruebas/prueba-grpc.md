@@ -26,3 +26,12 @@
 - **Resultado obtenido:** Caja devolvió la misma confirmación `PAG-3F40D3BBC3CA`.
 - **Eventos observados:** Kafka contenía un solo evento `PAGO/PAGADO` para ese pedido.
 - **Conclusión:** repetir el pago no generó una segunda confirmación ni un segundo evento de pago.
+
+## Prueba 4: Facturación procesa un pago tardío reproducido desde Kafka
+
+- **Pedido usado:** `a8538411-75eb-4164-8c56-7e53b34efa90`.
+- **Resultado inicial:** antes del cambio del consumidor, Facturación publicó `FACTURACION_PENDIENTE` tras seis intentos, porque el pago todavía estaba `PENDIENTE`.
+- **Pago:** Caja publicó después el evento `PAGO/PAGADO`, con confirmación `PAG-412BC93D4D9F`.
+- **Cambio aplicado:** Facturación se suscribió a `pedido.estado` y procesa los eventos `PAGO/PAGADO`.
+- **Resultado observado:** al reiniciar Facturación, el consumidor leyó el evento de pago guardado en Kafka y publicó `FACTURADO`, con factura `FAC-6242528FFF56`.
+- **Conclusión:** Facturación pudo procesar el evento de pago reproducido desde Kafka y emitir la factura. Esta prueba también mostró que, si se agotan los reintentos antes del pago, el evento de pago debe procesarse para completar la facturación.
