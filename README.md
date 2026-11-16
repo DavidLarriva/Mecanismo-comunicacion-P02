@@ -9,8 +9,8 @@ Los estudiantes hacen pedidos desde la web o el celular. Cada pedido llega a coc
 | Mecanismo | Tipo | Dónde se usa | Decisión |
 |---|---|---|---|
 | REST | Síncrono | Cliente → API de Pedidos; cajero → API y Caja; administración → Estadísticas | `docs/adr/ADR-001-rest.md` |
-| Kafka | Asíncrono | API → cocina, caja, facturación y estadísticas (`pedido.creado`); cambios de estado entre servicios (`pedido.estado`) | `docs/adr/ADR-002-kafka.md` |
-| gRPC | Síncrono | Facturación → Caja (`ConfirmarPago`), antes de emitir la factura | `docs/adr/ADR-003-grpc.md` |
+| Kafka | Asíncrono | API → cocina, caja y estadísticas (`pedido.creado`); cambios de estado entre servicios, que también activan a facturación (`pedido.estado`) | `docs/adr/ADR-002-kafka.md` |
+| gRPC | Síncrono | Facturación → Caja (`ConfirmarPago`), al recibir `PAGO/PAGADO` y antes de emitir la factura | `docs/adr/ADR-003-grpc.md` |
 | WebSocket | Asíncrono (conexión persistente) | Notificaciones → cliente (cambios de estado y pedido listo) | `docs/adr/ADR-004-websockets.md` |
 
 La consigna pide REST y dos mecanismos más, y el grupo implementa cuatro. La justificación de la selección está en `docs/adr/ADR-005-seleccion.md`.
@@ -77,28 +77,42 @@ Todos los servicios se ejecutan **desde la raíz del repositorio**, cada uno en 
    ```bash
    .venv/bin/python -m backend.estadisticas.main
    ```
-5. **Caja, Facturación y Notificaciones:** _pendiente (Integrantes 3 y 4)._
+5. **Caja** (REST `http://localhost:8001` y gRPC en el puerto 50051):
+   ```bash
+   .venv/bin/python -m uvicorn backend.caja.main:app --port 8001
+   ```
+6. **Facturación:**
+   ```bash
+   .venv/bin/python -m backend.facturacion.main
+   ```
+7. **Notificaciones** (`ws://localhost:8765`):
+   ```bash
+   .venv/bin/python -m backend.websockets.servidor
+   ```
+8. **Cliente web:** abrir `backend/websockets/cliente/index.html` en el navegador.
+
+Al arrancar, cada consumidor lee los eventos que tiene pendientes en Kafka. Si quedaron eventos de ejecuciones anteriores, Cocina y Facturación tardan un poco en ponerse al día. Para empezar con Kafka vacío, apagarlo con `down` (ver abajo) y volver a levantarlo: el contenedor no guarda los datos en un volumen.
 
 Para apagar Kafka:
 ```bash
 docker compose -f infra/docker-compose.yml down
 ```
 
-Cada servicio tiene más detalle en su propia carpeta. Para la API: `backend/api_rest/README.md`.
+Cada servicio tiene más detalle en su propia carpeta: `backend/api_rest/README.md` y `backend/websockets/README.md`.
 
 ## Cómo probar
 
 | Mecanismo | Prueba | Cómo ejecutarla |
 |---|---|---|
 | REST | Pedido duplicado y Kafka caído (`docs/pruebas/prueba-rest.md`) | `.venv/bin/python -m backend.api_rest.pruebas.prueba_idempotencia` |
-| Kafka | `docs/pruebas/prueba-kafka.md` | _Integrante 2_ |
-| gRPC | `docs/pruebas/prueba-grpc.md` | _Integrante 3_ |
-| WebSocket | `docs/pruebas/prueba-websockets.md` | _Integrante 4_ |
-| Integración | `docs/pruebas/integracion.md` | _Todos_ |
+| Kafka | Consumidor de Cocina detenido (`docs/pruebas/prueba-kafka.md`) | Detener Cocina, crear un pedido y volver a levantarla |
+| gRPC | Caja no disponible y pago repetido (`docs/pruebas/prueba-grpc.md`) | Ver el documento de la prueba |
+| WebSocket | Cliente desconectado y reconectado (`docs/pruebas/prueba-websockets.md`) | `.venv/bin/python -m backend.websockets.prueba_reconexion --espera 15` |
+| Integración | Flujo completo (`docs/pruebas/integracion.md`) | Todos los servicios en marcha |
 
-Pruebas automatizadas de la API (no necesitan Kafka):
+Pruebas automatizadas de todo el repositorio (no necesitan Kafka ni los servicios en marcha):
 ```bash
-.venv/bin/python -m unittest discover -s backend/api_rest/tests -t .
+.venv/bin/python -m pytest -q
 ```
 
 ## Equipo

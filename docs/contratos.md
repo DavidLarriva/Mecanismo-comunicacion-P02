@@ -1,6 +1,6 @@
 # Contratos de CampusBite
 
-Versión 1.0 — contrato de comunicación entre servicios, basado en el flujo integrado (pasos 1 a 10).
+Versión 1.3 — contrato de comunicación entre servicios, basado en el flujo integrado (pasos 1 a 10).
 Ningún integrante cambia por su cuenta un endpoint, un topic, un evento, el `.proto` o un estado: cualquier cambio se acuerda en grupo y se registra en la sección 9.
 
 ---
@@ -169,6 +169,7 @@ Caja solo conoce los cobros que registró al leer `pedido.creado`; no consulta a
 | `200` | El cobro pasa de `PENDIENTE` a `PAGADO`; genera `idConfirmacion` y publica `PAGO/PAGADO` | — |
 | `200` | Ya estaba `PAGADO`: devuelve lo mismo, sin volver a contar ni publicar | — |
 | `404` | Caja aún no tiene ese cobro (todavía no leyó `pedido.creado`, o el pedido no existe) | `COBRO_NO_ENCONTRADO` |
+| `503` | El pago quedó registrado, pero Kafka no confirmó `PAGO/PAGADO`. Al reintentar, Caja publica el mismo evento (mismo `idEvento`) y devuelve la misma confirmación | `SERVICIO_NO_DISPONIBLE` |
 
 Respuesta:
 ```json
@@ -211,8 +212,10 @@ Respuesta:
 
 | Topic | Particiones | Clave del mensaje | Productores | Consumer groups |
 |---|---|---|---|---|
-| `pedido.creado` | 3 | `idPedido` | API | `cocina`, `caja`, `facturacion`, `estadisticas` |
-| `pedido.estado` | 3 | `idPedido` | API, Cocina, Caja, Facturación | `api`, `notificaciones`, `estadisticas` |
+| `pedido.creado` | 3 | `idPedido` | API | `cocina`, `caja`, `estadisticas` |
+| `pedido.estado` | 3 | `idPedido` | API, Cocina, Caja, Facturación | `api`, `notificaciones`, `facturacion`, `estadisticas` |
+
+Facturación no consume `pedido.creado`: se activa con el evento `PAGO/PAGADO` de `pedido.estado` e ignora los demás (sección 6).
 
 Configuración:
 - **Topics:** se crean explícitamente con 3 particiones (por script o en el `docker-compose`). No se confía en la creación automática, que usaría 1 partición.
@@ -304,6 +307,7 @@ Reglas del servidor (Caja):
 - Si la llamada llega otra vez, responde lo mismo con `repetida = true` y no vuelve a contarla. Es la semántica "a lo sumo una vez".
 
 Reglas del cliente (Facturación):
+- Llama a `ConfirmarPago` cuando lee un evento `PAGO/PAGADO` en `pedido.estado`. El evento solo avisa: la confirmación la da Caja, que es la autoridad sobre el pago.
 - Deadline de 2 s por llamada (`timeout=2`).
 - `DEADLINE_EXCEEDED` o `UNAVAILABLE` (errores de transporte), `PENDIENTE` o `NO_ENCONTRADO` (respuestas de negocio) → reintenta cada 10 s, máximo 6 intentos. Después publica `FACTURACION/FACTURACION_PENDIENTE`.
 - `PAGADO` → emite una sola factura por pedido (guarda los `idPedido` facturados) y publica `FACTURACION/FACTURADO`.
@@ -361,10 +365,10 @@ Ese orden evita perder un evento que llegue entre la consulta y la suscripción.
 | 1 | Cliente → API | REST | `POST /pedidos` |
 | 2 | API → Kafka | Kafka | `pedido.creado` |
 | 3 | Cliente → Notificaciones, luego → API | WebSocket, REST | `suscribir`, `GET /pedidos/{id}` |
-| 4 | Kafka → Cocina, Caja, Facturación, Estadísticas | Kafka | `pedido.creado` |
+| 4 | Kafka → Cocina, Caja, Estadísticas | Kafka | `pedido.creado`; Caja publica `PAGO/PENDIENTE` |
 | 5 | Cocina → Kafka → API, Notificaciones | Kafka, WebSocket | `PREPARACION/EN_PREPARACION` |
 | 6 | Cajero → Caja | REST | `POST /caja/pagos/{id}` → `PAGO/PAGADO` |
-| 7 | Facturación → Caja | gRPC | `ConfirmarPago` → `FACTURACION/FACTURADO` |
+| 7 | Kafka → Facturación → Caja | Kafka, gRPC | `PAGO/PAGADO` → `ConfirmarPago` → `FACTURACION/FACTURADO` |
 | 8 | Cocina → Kafka → API, Notificaciones | Kafka, WebSocket | `PREPARACION/LISTO` |
 | 9 | Cajero → API | REST | `PATCH /pedidos/{id}/entregar` → `ENTREGA/ENTREGADO` |
 | 10 | Cliente se reconecta | WebSocket, REST | `suscribir` y luego `GET` |
@@ -378,3 +382,4 @@ Ese orden evita perder un evento que llegue entre la consulta y la suscripción.
 | 1.0 | 2026-11-12 | Versión inicial | _pendiente_ |
 | 1.1 | 2026-11-12 | Python 3.12 o superior y versiones fijadas en `requirements.txt`; se agrega `contracts/pedido.schema.json` | _pendiente_ |
 | 1.2 | 2026-11-15 | Tras un `503` la clave queda `LIBERADA` y el reintento conserva el `idPedido` (antes se borraba la clave) | _pendiente_ |
+| 1.3 | 2026-11-16 | Facturación consume `pedido.estado` y se activa con `PAGO/PAGADO`, en lugar de consumir `pedido.creado` y consultar a Caja antes del pago. Con el diseño anterior, un pago hecho después de los 6 intentos (unos 60 s) dejaba el pedido sin factura. Se agrega el `503` de `POST /caja/pagos` | David, Dome |
