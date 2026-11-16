@@ -379,7 +379,7 @@ Ese orden evita perder un evento que llegue entre la consulta y la suscripción.
 
 | Versión | Fecha | Cambio | Acordado por |
 |---|---|---|---|
-| 1.0 | 2026-11-12 | Versión inicial | _pendiente_ |
-| 1.1 | 2026-11-12 | Python 3.12 o superior y versiones fijadas en `requirements.txt`; se agrega `contracts/pedido.schema.json` | _pendiente_ |
-| 1.2 | 2026-11-15 | Tras un `503` la clave queda `LIBERADA` y el reintento conserva el `idPedido` (antes se borraba la clave) | _pendiente_ |
-| 1.3 | 2026-11-16 | Facturación consume `pedido.estado` y se activa con `PAGO/PAGADO`, en lugar de consumir `pedido.creado` y consultar a Caja antes del pago. Con el diseño anterior, un pago hecho después de los 6 intentos (unos 60 s) dejaba el pedido sin factura. Se agrega el `503` de `POST /caja/pagos` | David, Dome |
+| 1.0 | 2026-11-12 | Versión inicial | David, Caro, Dome, Cinthy |
+| 1.1 | 2026-11-12 | Python 3.12 o superior y versiones fijadas en `requirements.txt`; se agrega `contracts/pedido.schema.json` | David, Caro, Dome, Cinthy |
+| 1.2 | 2026-11-15 | Tras un `503` la clave queda `LIBERADA` y el reintento conserva el `idPedido` (antes se borraba la clave) | David, Caro, Dome, Cinthy |
+| 1.3 | 2026-11-16 | Facturación consume `pedido.estado` y se activa con `PAGO/PAGADO`, en lugar de consumir `pedido.creado` y consultar a Caja antes del pago. Con el diseño anterior, un pago hecho después de los 6 intentos (unos 60 s) dejaba el pedido sin factura. Se agrega el `503` de `POST /caja/pagos` | David, Caro, Dome, Cinthy |
