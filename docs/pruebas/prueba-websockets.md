@@ -33,11 +33,31 @@ Guardar también el log de la terminal del servidor en `docs/pruebas/evidencias/
 
 ## Resultado obtenido (real)
 
-> Pegar aquí la salida de `prueba_reconexion.py`, el log del servidor y capturas de la página. Anotar lo que realmente pasó, aunque sea inesperado.
+Ejecución de `prueba_reconexion.py` con el sistema completo (Kafka, API REST, Cocina y WebSocket):
 
+```text
+[23:24:43 +  0.3s] 1. POST /pedidos → 201 idPedido=e589b83b-3ddc-4751-8a98-673fb341cae5
+[23:24:43 +  0.3s] 2. WebSocket abierto (101 Switching Protocols)
+[23:24:43 +  0.3s] → WS suscribir: {'tipo': 'suscrito', 'idPedido': 'e589b83b-3ddc-4751-8a98-673fb341cae5'}
+[23:24:44 +  0.5s] → GET /pedidos → 200  preparación=EN_PREPARACION pago=PENDIENTE facturación=None entregado=False
+[23:24:44 +  0.5s] ← WS push PREPARACION/EN_PREPARACION (origen cocina)
+[23:24:46 +  2.5s] 3. El cliente se DESCONECTA antes de que cocina termine
+[23:24:46 +  2.5s]    ...esperando 15 s sin conexión (cocina publica LISTO mientras tanto)...
+[23:25:01 + 17.5s] 4. El cliente VUELVE: nuevo WebSocket
+[23:25:01 + 17.5s] → WS suscribir: {'tipo': 'suscrito', 'idPedido': 'e589b83b-3ddc-4751-8a98-673fb341cae5'}
+[23:25:01 + 17.7s] → GET /pedidos → 200  preparación=LISTO pago=PENDIENTE facturación=None entregado=False
+[23:25:01 + 17.7s]    Estado recuperado por GET: LISTO -> OK
+[23:25:01 + 17.7s] 5. Se provoca un evento posterior
+[23:25:03 + 20.0s] Caja no está corriendo: se usa el stub de Caro para publicar ENTREGA/ENTREGADO
+[23:25:04 + 20.5s] → stub publicó ENTREGA/ENTREGADO en pedido.estado
+[23:25:04 + 20.5s] ← WS push ENTREGA/ENTREGADO (origen api)
+[23:25:10 + 26.5s] RESULTADO: estado recuperado por REST=sí; ENTREGADO recibido por WebSocket=sí
 ```
-(pegar log)
-```
+
+### Incidencia y resultado inesperado resuelto
+En las primeras pruebas sobre Windows, las peticiones HTTP a la API fallaban con `WinError 10061` ("No se pudo cargar el menú" y "GET falló") mientras que el WebSocket sí conectaba.
+- **Causa:** En Windows, `localhost` se resuelve por defecto a la dirección IPv6 `::1`. La API REST (Uvicorn) escuchaba en `0.0.0.0` (solo IPv4), rechazando la conexión en IPv6. El servidor WebSocket funcionaba porque `websockets` enlaza por defecto en dual-stack (IPv4 e IPv6).
+- **Corrección:** Se configuró explícitamente `127.0.0.1` en el cliente web y en el script de prueba para forzar IPv4, logrando la ejecución exitosa del flujo completo.
 
 ## Explicación (conceptos del Cap. 2)
 
