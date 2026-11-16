@@ -1,3 +1,4 @@
+# Realizado con IA y revisado por David Larriva
 MENU = {
     "SAN-01": {"idProducto": "SAN-01", "nombre": "Sanduche de pollo", "precio": 250},
     "EMP-01": {"idProducto": "EMP-01", "nombre": "Empanada de queso", "precio": 120},

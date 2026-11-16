@@ -1,3 +1,4 @@
+# Realizado con IA y revisado por David Larriva
 import copy
 import threading
 

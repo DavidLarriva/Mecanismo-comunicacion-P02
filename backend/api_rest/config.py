@@ -1,3 +1,4 @@
+# Realizado con IA y revisado por David Larriva
 import os
 
 GRUPO_CONSUMIDOR = os.getenv("KAFKA_GRUPO_API", "api")

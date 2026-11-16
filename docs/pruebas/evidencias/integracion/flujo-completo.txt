@@ -1,0 +1,29 @@
++  0.0s estadisticas antes: {'pedidosRecibidos': 18, 'pedidosPagados': 3, 'pedidosEntregados': 3, 'ventasEntregadas': 1350}
++  0.1s POST /pedidos -> 201 0751c38d-1a4b-4de6-bd6a-dc0117913d76 total=450
++  0.1s WS suscribir -> suscrito
++  0.1s GET /pedidos -> ('EN_PREPARACION', 'PENDIENTE', None, False)
++  0.1s PATCH entregar (antes de LISTO) -> 409 PEDIDO_NO_LISTO
++  0.1s WS <- PREPARACION/EN_PREPARACION (cocina) {}
++  0.1s WS <- PAGO/PENDIENTE (caja) {}
++  5.1s WS <- PREPARACION/LISTO (cocina) {}
++  5.3s esperando LISTO -> ('LISTO', 'PENDIENTE', None, False)
++  5.3s PATCH entregar (sin pagar) -> 409 PEDIDO_NO_PAGADO
++  5.4s GET /caja/pagos -> PENDIENTE monto=450
++  5.4s POST /caja/pagos x2 -> 200 PAG-C2F6C3C45D19 / 200 PAG-C2F6C3C45D19
++  5.4s POST /caja/pagos (pedido inexistente) -> 404 COBRO_NO_ENCONTRADO
++  5.4s esperando FACTURADO -> ('LISTO', 'PAGADO', 'FACTURADO', False)
++  5.5s PATCH entregar x2 -> 200 200 entregado=True
++  5.5s WS <- PAGO/PAGADO (caja) {'idConfirmacion': 'PAG-C2F6C3C45D19', 'monto': 450}
++  5.5s WS <- FACTURACION/FACTURADO (facturacion) {'idFactura': 'FAC-103F52009CA9'}
++  5.5s WS <- ENTREGA/ENTREGADO (api) {}
++  7.5s estados recibidos por WebSocket: ['EN_PREPARACION', 'PENDIENTE', 'LISTO', 'PAGADO', 'FACTURADO', 'ENTREGADO']
++  7.5s GET final -> ('LISTO', 'PAGADO', 'FACTURADO', True)
++  7.5s estadisticas despues: {'pedidosRecibidos': 19, 'pedidosPagados': 4, 'pedidosEntregados': 4, 'ventasEntregadas': 1800}
+eventos del pedido en Kafka:
+  pedido.creado particion=0 offset=7 pedido creado, total=450
+  pedido.estado particion=0 offset=27 PREPARACION/EN_PREPARACION origen=cocina
+  pedido.estado particion=0 offset=28 PAGO/PENDIENTE origen=caja
+  pedido.estado particion=0 offset=29 PREPARACION/LISTO origen=cocina
+  pedido.estado particion=0 offset=30 PAGO/PAGADO origen=caja
+  pedido.estado particion=0 offset=31 FACTURACION/FACTURADO origen=facturacion
+  pedido.estado particion=0 offset=32 ENTREGA/ENTREGADO origen=api

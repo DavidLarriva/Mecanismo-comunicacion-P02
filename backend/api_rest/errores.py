@@ -1,3 +1,4 @@
+# Realizado con IA y revisado por David Larriva
 class ErrorApi(Exception):
     def __init__(self, estado_http, codigo, mensaje):
         super().__init__(mensaje)
