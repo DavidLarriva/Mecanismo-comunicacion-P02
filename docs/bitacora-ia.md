@@ -8,25 +8,6 @@ Los fragmentos de código desarrollados con asistencia de inteligencia artificia
 
 | Integrante y fecha | Herramienta | Consulta | Respuesta (resumen) | Acción del grupo | Validación |
 |---|---|---|---|---|---|
-| Caro / 12-nov-2026 | ChatGPT | Analizar la guía del proyecto y la división de actividades entre los cuatro integrantes, identificando las responsabilidades del Integrante 2 y sus dependencias. | Se propuso una planificación para la implementación de Kafka, incluyendo los topics, los consumer groups, la política de reintentos, la DLQ y las dependencias con los demás integrantes. | Se utilizó como orientación inicial para organizar las tareas de la capa Kafka y coordinar las dependencias con los demás servicios. | Se contrastó la propuesta con la guía del proyecto y la práctica 01. |
-| Caro / 12-nov-2026 | Claude | Generar una implementación independiente de la capa de comunicación Kafka. | Se generó una primera versión utilizando `confluent-kafka` y un formato de eventos propio. | Se descartó esta implementación porque no coincidía con el contrato de comunicación establecido por el grupo. | Se comparó el código generado con el contrato documentado en `contratos.md`. |
-| Caro / 12-nov-2026 | Claude | Adaptar la implementación al contrato v1.0 y desarrollar los servicios de Cocina y Estadísticas. | Se propuso una nueva implementación con `kafka-python`, eventos en camelCase, valores monetarios en centavos, un consumidor base y los servicios de Cocina y Estadísticas. | Se tomó como base para adaptar la capa Kafka y desarrollar los consumidores correspondientes.. | Se ejecutaron 30 pruebas con dobles de prueba. La ejecución con Kafka real se verificó por separado. . |
-| Caro / 13-nov-2026 | Claude | Revisar las observaciones de David sobre la configuración de Docker Compose, especialmente la creación de topics y el healthcheck. | Se propuso incorporar el servicio `kafka-init` para crear los topics y configurar un healthcheck para Kafka. | Se incorporaron los ajustes necesarios en la configuración de Docker Compose. | Se revisó el estado de los contenedores con `docker compose ps -a` y los registros de `kafka-init`. |
-| Caro / 13-nov-2026 | ChatGPT | Consultar cómo solucionar un error al levantar Docker Compose en Windows. | Se sugirió reemplazar `$$T` por rutas completas y agregar un bucle de espera en `kafka-init`. | Se aceptó la propuesta para corregir la configuración y permitir que el servicio de inicialización esperara a Kafka. | Se comprobó mediante la ejecución de Docker Compose en Windows. |
-| Caro / 15-nov-2026 | Claude | Organizar los commits. | Se generó una propuesta de división de commits para mantener un orden limpio. | Se utilizaron los documentos como apoyo para organizar el trabajo. | Se realizó una revisión manual de los documentos. |
-| Caro / 15-nov-2026 | Claude | Analizar `cambios_para_el_equipo.txt` y organizar las actividades pendientes correspondientes a la implementación de Kafka. | Se prepararon orientaciones para el ADR-002, la prueba de falla del consumidor, la actualización de documentación y la lista de pendientes. | Se utilizaron las orientaciones para revisar y completar la documentación de Kafka y registrar los resultados de las pruebas realizadas. | Se contrastaron las indicaciones con los archivos del proyecto, los escenarios de calidad y los resultados observados durante la ejecución. |
-
-## Código con asistencia de IA
-
-Los siguientes archivos o grupos de archivos recibieron asistencia de herramientas de IA durante su desarrollo o revisión:
-
-- `infra/docker-compose.yml`
-- `backend/kafka/*`
-- `backend/cocina/main.py`
-- `backend/estadisticas/*`
-- `backend/kafka/stubs/*`
-- `backend/kafka/tests/*`
-
 
 ## Reflexión final
 
