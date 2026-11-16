@@ -16,7 +16,7 @@ import uuid
 import httpx
 from websockets.asyncio.client import connect
 
-# 127.0.0.1 y no localhost: en Windows localhost puede ir a IPv6 (::1)
+# (bitácora #4) 127.0.0.1 y no localhost: en Windows localhost puede ir a IPv6 (::1)
 # y la API escucha solo en IPv4 (0.0.0.0), así que la conexión sería rechazada.
 API = "http://127.0.0.1:8000"
 CAJA = "http://127.0.0.1:8001"
