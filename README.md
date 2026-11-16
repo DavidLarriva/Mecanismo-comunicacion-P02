@@ -15,7 +15,7 @@ Pedidos desde web/móvil que recorren cocina, caja y facturación, con notificac
 > Nota: la consigna base pide REST + 2 mecanismos; gRPC es un cuarto mecanismo adicional (confirmar alcance con el docente).
 
 ## Estructura
-- `backend/` — servicios (api-rest, kafka, cocina, caja, facturacion, grpc, websockets, estadisticas)
+- `backend/` — servicios (api_rest, kafka, cocina, caja, facturacion, grpc, websockets, estadisticas)
 - `contracts/` — contrato JSON del pedido y `.proto` de gRPC
 - `infra/` — docker-compose (Kafka)
 - `docs/arquitectura/` — C4, escenarios de calidad, mapa de microservicios
