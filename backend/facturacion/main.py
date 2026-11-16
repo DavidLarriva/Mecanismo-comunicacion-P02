@@ -22,7 +22,7 @@ class ServicioFacturacion(ConsumerBase):
     def __init__(self, **opciones) -> None:
         super().__init__(
             servicio="facturacion",
-            group_id=kafka_config.GRUPOS_PEDIDO_CREADO["facturacion"],
+            group_id=kafka_config.GRUPOS_PEDIDO_ESTADO["facturacion"],
             topic=kafka_config.TOPIC_PEDIDO_ESTADO,
             **opciones,
         )
@@ -66,7 +66,6 @@ class ServicioFacturacion(ConsumerBase):
         )
 # INICIO: fragmento elaborado con apoyo de IA y revisado por Dome.
     def procesar(self, evento: dict) -> None:
-        # Facturación solo actúa cuando Caja confirma el pago.
         if evento.get("tipo") != "PAGO" or evento.get("estado") != "PAGADO":
             self.log.info(
                 "evento ignorado: tipo=%s estado=%s",
@@ -105,11 +104,17 @@ class ServicioFacturacion(ConsumerBase):
                     return
 
                 ultimo_error = estado_pago
+                self.log.warning(
+                    "intento %s/6 para %s: Caja respondió %s; se reintentará",
+                    intento,
+                    id_pedido,
+                    estado_pago,
+                )
 
             except grpc.RpcError as error:
                 ultimo_error = error.code().name
                 self.log.warning(
-                    "intento %s para %s: gRPC respondió %s",
+                    "intento %s/6 para %s: gRPC respondió %s; se reintentará",
                     intento,
                     id_pedido,
                     ultimo_error,

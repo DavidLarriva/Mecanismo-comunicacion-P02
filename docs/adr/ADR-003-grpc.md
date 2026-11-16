@@ -1,19 +1,21 @@
 # ADR-003: gRPC para confirmar pagos
 
-- **Estado:** Propuesto
-- **Responsable:** Integrante 3
+- **Estado:** Aceptado
+- **Responsable:** Integrante 3 (Domenica Uyunkar)
 
 ## Contexto
 
-Facturación necesita consultar a Caja si un pedido está pagado
-antes de emitir su factura. La llamada requiere una respuesta inmediata.
+Facturación se activa cuando recibe en el topic `pedido.estado` un evento `PAGO/PAGADO`. Entonces consulta a Caja mediante `ConfirmarPago(idPedido)` por gRPC; Caja es la fuente del estado del pago. La llamada tiene un timeout de 2 segundos. Si Caja responde `PENDIENTE` o `NO_ENCONTRADO`, o la llamada falla por timeout, Facturación reintenta cada 10 segundos, hasta seis intentos, y luego publica `FACTURACION_PENDIENTE`.
+
+Este diseño evita que Facturación agote sus reintentos mientras el pedido todavía espera el pago. Como el consumidor procesa los eventos de forma secuencial, los reintentos pueden retrasar otros eventos: el tiempo máximo aproximado es de 62 segundos si las seis llamadas alcanzan el timeout.
 
 ## Decisión
 
-Facturación llamará a `Caja.ConfirmarPago` mediante gRPC.
-La solicitud enviará `id_pedido`; la respuesta indicará
-`PAGADO`, `PENDIENTE` o `NO_ENCONTRADO`.
-El cliente usará un timeout de dos segundos.
+Facturación consumirá el topic `pedido.estado` y actuará cuando reciba un evento
+`PAGO/PAGADO`. Entonces consultará a Caja mediante `Caja.ConfirmarPago`, enviando
+`id_pedido`. La respuesta indicará `PAGADO`, `PENDIENTE` o `NO_ENCONTRADO`.
+El cliente usará un timeout de 2 segundos y realizará hasta seis intentos
+separados por esperas de 10 segundos.
 
 ## Alternativas consideradas
 
