@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """Productor Kafka (kafka-python). Interfaz usada por la API y los demás servicios.
 
 Contrato: acks='all' y se espera la confirmación con future.get(timeout=5).

@@ -1,5 +1,6 @@
-"""STUB de Caja (responsable: Dome). Solo para probar mientras Dome no entrega lo real.
-
+# [IA]
+# Revisado por: Carolina Fortmann y Domenica Uyunkar
+"""Stub de servicio para pruebas de integración.
 NO ejecutar junto al servicio real del mismo nombre: comparten consumer group y se repartirían los pedidos.
   python -m backend.kafka.stubs.servicio_stub caja
   ... --fallar-todo    # procesar() siempre falla: sirve para ver reintentos y DLQ

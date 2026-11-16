@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """Cocina (contrato: responsable Caro, sin puerto).
 
 Consume 'pedido.creado' (grupo 'cocina') y publica en 'pedido.estado':

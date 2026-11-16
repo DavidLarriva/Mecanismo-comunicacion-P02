@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """Dobles de prueba: permiten ejecutar los tests SIN broker Kafka."""
 import json
 from types import SimpleNamespace

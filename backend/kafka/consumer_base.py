@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """Clase base de los consumidores (kafka-python, bloqueante: corre en el hilo principal o en un hilo).
 
 Política de entrega (at-least-once + deduplicación):

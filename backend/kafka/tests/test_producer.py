@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 import pytest
 
 from ..producer import EventProducer, KafkaNoDisponible

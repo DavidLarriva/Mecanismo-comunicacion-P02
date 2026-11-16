@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 from ..consumer_base import ConsumerBase
 from ..eventos import crear_evento_estado, crear_evento_pedido_creado
 from .fakes import FakeConsumer, FakeEventProducer, FakeRecord, pedido_api

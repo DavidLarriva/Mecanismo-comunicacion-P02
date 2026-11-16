@@ -1,50 +1,59 @@
-# Prueba Kafka: consumidor no responde
+# Prueba Kafka: recuperación del consumidor de Cocina
 
-- **Escenario de calidad relacionado:** Escenario 4, rendimiento al recibir pedidos (`docs/arquitectura/escenarios-calidad.md`). Medida: la API responde sin esperar a ningún servicio interno y hay 0 eventos perdidos cuando un consumidor se reinicia.
+- **Escenario de calidad relacionado:** 4. Rendimiento.
 - **Responsable:** Integrante 2 (Carolina Fortmann)
 
 ## Ejecución
 
-1. Se inició el broker Kafka y se verificó que los servicios necesarios estuvieran disponibles.
+1. Se inició el broker Kafka y se comprobó que estuviera disponible junto con los servicios necesarios para realizar la prueba.
 
-2. Se inició la API REST y se comprobó su funcionamiento mediante Swagger.
+2. Se levantó la API REST y se verificó su funcionamiento mediante Swagger.
 
-3. Se detuvo temporalmente el consumidor de Cocina, manteniendo Kafka y la API REST activos.
+3. Se interrumpió temporalmente la ejecución del consumidor de Cocina, mientras Kafka y la API REST permanecieron activos.
 
-4. Se envió un pedido mediante el endpoint POST /pedidos, utilizando una clave de idempotencia.
+4. Durante la interrupción del consumidor, se registró un pedido mediante el endpoint `POST /pedidos`, utilizando una clave de idempotencia.
 
-5. Se reinició el consumidor de Cocina mediante el comando python -m backend.cocina.main --demora 5.
+5. Una vez registrado el pedido, se volvió a iniciar el consumidor de Cocina mediante el comando:
 
-6. Se observaron los mensajes generados durante el procesamiento del pedido y las publicaciones de cambios de estado en el topic pedido.estado.
+   ```powershell
+   python -m backend.cocina.main --demora 5
+   ```
+
+6. Se revisaron los registros de ejecución para identificar el procesamiento del pedido y las publicaciones de sus cambios de estado en el topic `pedido.estado`.
 
 ## Resultado obtenido (real)
 
-Después de reiniciar el consumidor de Cocina, se observaron los siguientes registros:
+Después de iniciar nuevamente el consumidor de Cocina, se observaron dos publicaciones en el topic `pedido.estado`:
 
-Se publicó un evento en pedido.estado, partición 0, offset 8, y Cocina registró el estado EN_PREPARACION.
+- En la partición 0, offset 8, se publicó el cambio de estado y Cocina registró el pedido como `EN_PREPARACION`.
+- En la partición 0, offset 9, se publicó el siguiente cambio y Cocina registró el pedido como `LISTO`.
 
-Posteriormente, se publicó otro evento en pedido.estado, partición 0, offset 9, y Cocina registró el estado LISTO.
+Los dos registros presentan la misma clave de pedido: `3742ad17-0722-48e6-b67d-e054ee096c24`.
 
-Ambos registros corresponden a la misma clave de pedido: 3742ad17-0722-48e6-b67d-e054ee096c24.
+Al comparar este identificador con el campo `idPedido` de la respuesta obtenida en Swagger, se confirmó que ambos corresponden al mismo pedido enviado mientras el consumidor estaba detenido.
 
-Los resultados muestran que el consumidor volvió a procesar un pedido y publicó sus cambios de estado en Kafka después de su reinicio. El identificador coincide con la respuesta de Swagger del pedido enviado durante la interrupción: `201` con `idPedido` `3742ad17-0722-48e6-b67d-e054ee096c24` (captura `03-pedido-publicado.png`), el mismo que procesó Cocina al volver (captura `04-cocina-recuperada.png`). La API respondió `201` aunque Cocina estaba detenida, y el pedido no se perdió.
+Por lo tanto, se comprobó que, después de reiniciar Cocina, el consumidor pudo recuperar el procesamiento del pedido y publicar sus cambios de estado en Kafka.
 
-Evidencias en `docs/pruebas/evidencias/kafka/`:
-- `01-kafka-activo.png`: broker en marcha.
-- `02-cocina-detenida.png`: Cocina detenida.
-- `03-pedido-publicado.png`: el pedido creado por Swagger.
-- `04-cocina-recuperada.png`: Cocina procesando el pedido al volver.
+## Evidencias
 
-## Explicación (conceptos del Cap. 2)
+Se deben adjuntar las capturas reales obtenidas durante la ejecución:
 
-Kafka permite la comunicación asíncrona entre productores y consumidores. Esto significa que la API puede publicar un evento sin esperar a que el servicio de Cocina termine de procesarlo.
+1. **Registro del pedido en Swagger:** evidencia de la solicitud `POST /pedidos` y del identificador `idPedido` generado.
+2. **Registros de Cocina:** evidencia de los estados `EN_PREPARACION` y `LISTO`, junto con la clave del pedido.
+3. **Publicaciones en Kafka:** registros que muestran el topic `pedido.estado`, la partición 0 y los offsets 8 y 9.
 
-Cuando un consumidor se detiene, Kafka conserva los mensajes publicados en el topic de acuerdo con su configuración de almacenamiento y retención. Cuando el consumidor vuelve a estar disponible, puede continuar leyendo los mensajes pendientes desde la posición de consumo correspondiente.
+Las capturas deben almacenarse en `docs/pruebas/evidencias/kafka/`, utilizando los nombres de archivo correspondientes a las imágenes guardadas.
 
-En esta prueba se observó que Cocina retomó el procesamiento y publicó dos cambios de estado: EN_PREPARACION y LISTO. Esto demuestra el funcionamiento de la comunicación asíncrona y la recuperación del consumidor en el escenario ejecutado.
+## Explicación (conceptos del Capítulo 2)
 
-**Por qué no se perdió el pedido.** Cocina pertenece al consumer group `cocina`, y Kafka guarda para cada grupo el offset hasta el que ya procesó. El consumidor hace commit del offset solo después de procesar el mensaje (commit manual, `enable_auto_commit=False`). Mientras Cocina estuvo detenida, el pedido quedó en `pedido.creado` después del último offset confirmado del grupo, y al reiniciar el consumidor continuó desde ahí. Este es el desacoplamiento temporal del capítulo 2: productor y consumidor no necesitan estar activos al mismo tiempo, porque la comunicación es persistente.
+**Por qué no se perdió el pedido**
 
-**Al menos una vez.** Como el commit se hace después de procesar, si Cocina se cayera entre procesar y confirmar, el mensaje se volvería a leer al reiniciar. Por eso Kafka entrega "al menos una vez", y los consumidores descartan los pedidos repetidos por `idPedido` (contrato, sección 5).
+Kafka almacena los mensajes publicados en sus topics de acuerdo con la configuración de retención y almacenamiento del broker. Por esta razón, detener un consumidor no implica que los mensajes pendientes desaparezcan automáticamente. Cuando Cocina volvió a ejecutarse, pudo continuar con la lectura de los mensajes que todavía debía procesar.
 
-**Orden.** Los dos cambios de estado quedaron en la partición 0, con offsets 8 y 9, porque se publican con la clave `idPedido`. Kafka garantiza el orden dentro de una partición, así que cualquier consumidor lee `EN_PREPARACION` antes que `LISTO`.
+**Entrega al menos una vez**
+
+El comportamiento observado es compatible con una estrategia de entrega al menos una vez (*at-least-once*). Esto significa que un mensaje puede volver a entregarse si el consumidor no ha confirmado correctamente su procesamiento. Por ello, los consumidores deben contemplar mecanismos de idempotencia para evitar que una entrega repetida genere efectos duplicados.
+
+**Orden de procesamiento**
+
+Kafka conserva el orden de los mensajes dentro de una misma partición. En esta ejecución se observaron los offsets 8 y 9 en la partición 0, correspondientes a los cambios de estado `EN_PREPARACION` y `LISTO`, respectivamente. Esto permitió verificar la secuencia de procesamiento del pedido durante la prueba.

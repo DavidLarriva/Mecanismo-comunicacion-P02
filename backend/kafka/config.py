@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """Configuración central de la capa Kafka (según contratos.md v1.0, sección 5)."""
 import os
 

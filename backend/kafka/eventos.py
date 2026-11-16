@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """Eventos según contratos.md v1.0 (secciones 1 y 5). JSON en camelCase, dinero en centavos.
 
 pedido.creado  -> {idEvento, idPedido, idEstudiante, items[], total, fecha}

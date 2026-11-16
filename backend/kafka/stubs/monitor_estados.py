@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """STUB: imprime lo que llega a 'pedido.estado'. Simula a Notificaciones (Cinthy) y a la API.
 Usa un grupo propio (no del contrato) para no quitarles eventos a los servicios reales.
 

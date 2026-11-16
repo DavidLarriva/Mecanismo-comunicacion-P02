@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """API REST de Estadísticas (contrato sección 4, puerto 8002).
 
 Ejecutar desde la raíz del repo:  python -m backend.estadisticas.main
