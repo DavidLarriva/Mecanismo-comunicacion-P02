@@ -26,6 +26,9 @@ Los fragmentos de código desarrollados con asistencia de inteligencia artificia
 | #2 · Cinthy · 15/11/2026 | Claude (Anthropic) | Página del cliente: crear pedido con `Idempotency-Key`, abrir WebSocket y luego `GET`, reconexión cada 3 s | Propuso `cliente/index.html` y señaló una carrera: un `GET` desactualizado puede hacer retroceder un estado ya recibido por push | Se incorporó y se agregó la regla "cada estado solo avanza" | Probada en Chromium: creación, push, caída simulada, vuelta y reconexión automática tras reiniciar el servidor |
 | #3 · Cinthy · 15/11/2026 | Claude (Anthropic) | Script de la prueba de desconexión/reconexión y borrador del ADR-004 | Propuso `prueba_reconexion.py`, `tests/test_servidor.py`, ADR-004 y la guía de la prueba | Se revisaron y adaptaron al contrato v1.0 (eventos en `{"tipo":"estado","evento":...}`, centavos) | Resultado real de la prueba con el sistema completo registrado en `docs/pruebas/prueba-websockets.md` |
 | #4 · Cinthy · 15/11/2026 | Claude (Anthropic) | La página y `prueba_reconexion.py` fallaban con `WinError 10061` ("No se pudo cargar el menú") aunque la API estaba corriendo y el WebSocket sí conectaba | Explicó que en Windows `localhost` se resuelve primero a IPv6 (`::1`) y la API escucha solo en IPv4 (`0.0.0.0`); propuso usar `127.0.0.1` en el cliente y en el script | Se cambió a `127.0.0.1` en `cliente/index.html` y `prueba_reconexion.py`, con un comentario que explica el motivo | Se repitió la prueba con Kafka, API y Cocina reales: estado recuperado por REST y `ENTREGADO` recibido por WebSocket (`docs/pruebas/evidencias/websockets/reconexion.txt`) |
+| Domenica Uyunkar / 13-nov-2026 | ChatGPT | Diseñar el contrato gRPC para que Facturación consulte a Caja mediante `ConfirmarPago`. | Se propuso un servicio unario con mensajes tipados, estados de pago y un timeout de 2 segundos. | Creé `caja.proto`, el cliente y el servidor gRPC conectados al almacén de pagos de Caja. | Al llamar a un puerto sin servidor, el cliente obtuvo `DEADLINE_EXCEEDED` en 2,02 segundos. |
+| Domenica Uyunkar / 15-nov-2026 | ChatGPT | Integrar Caja y Facturación con la capa Kafka compartida y conservar la idempotencia del pago. | Se indicó reutilizar `EventProducer` y `ConsumerBase`, y conservar la misma confirmación al repetir el pago. | Adapté el almacén de pagos y Caja para publicar los estados del pago; conecté la consulta gRPC de Facturación. | El reintento devolvió el mismo `idConfirmacion`; en Kafka se observó el evento `PAGO/PAGADO`. |
+| Domenica Uyunkar / 16-nov-2026 | ChatGPT | Investigar por qué Facturación agotaba los reintentos antes de que se registrara un pago tardío. | La revisión identificó que iniciar los intentos al recibir `pedido.creado` podía publicar `FACTURACION_PENDIENTE` antes del pago. Se recomendó activar Facturación con `PAGO/PAGADO` en `pedido.estado`. | Cambié el consumidor de Facturación y actualicé el grupo, el ADR-003 y el documento de prueba. | Tras reiniciar el consumidor, Kafka reprodujo el pago guardado y Facturación publicó `FACTURADO` para el pedido probado. |
 
 ## Código con asistencia de IA: Integrante 1 (David)
 
@@ -43,6 +46,16 @@ Los siguientes archivos o grupos de archivos recibieron asistencia de herramient
 - `backend/estadisticas/*`
 - `backend/kafka/stubs/*`
 - `backend/kafka/tests/*`
+
+## Código con asistencia de IA: Integrante 3 (Domenica Uyunkar)
+
+Revisados y ajustados por Domenica Uyunkar:
+
+- `contracts/grpc/caja.proto` y los stubs gRPC generados.
+- `backend/grpc/caja_client.py` y `backend/grpc/caja_server.py`.
+- `backend/caja/almacen_pagos.py`, `backend/caja/kafka_caja.py` y `backend/caja/main.py`.
+- `backend/facturacion/main.py`.
+- El cambio de Facturación en `backend/kafka/config.py`.
 
 ## Código con asistencia de IA: Integrante 4 (Cinthy)
 
@@ -91,3 +104,11 @@ Usé Claude para generar el servidor WebSocket, el consumidor de `pedido.estado`
 Otro punto: la IA trabajó al principio con un borrador de contratos que tenía el dinero en dólares con decimales, mientras que el contrato v1.0 del repositorio usa centavos y otro formato para los mensajes del WebSocket. Hubo que adaptarla a la versión del repositorio. Además, la IA no pudo probar con Kafka real en su entorno; la prueba con el sistema completo la ejecuté yo.
 
 Conclusión: la IA aceleró el desarrollo, pero sus suposiciones sobre el entorno solo se pueden validar ejecutando el sistema real en las máquinas del equipo.
+
+- **Domenica Uyunkar:**
+
+Usé ChatGPT como apoyo para diseñar la comunicación gRPC entre Facturación y Caja, conectar el servidor gRPC con el almacén de pagos y adaptar Facturación a la capa Kafka del grupo. Las propuestas me sirvieron para avanzar con el contrato `.proto`, el cliente, el servidor y los reintentos, pero tuve que revisarlas y corregir detalles de integración e indentación antes de ejecutar el código.
+
+La prueba de pago tardío mostró un problema importante: si Facturación iniciaba sus seis intentos al recibir `pedido.creado`, podía publicar `FACTURACION_PENDIENTE` antes de que el estudiante pagara. Cambié el disparador para que Facturación actuara ante `PAGO/PAGADO` en `pedido.estado`. Después comprobé en Kafka que el evento guardado se procesó y que se publicó `FACTURADO`.
+
+También verifiqué el timeout gRPC: una llamada a un puerto sin servidor terminó con `DEADLINE_EXCEEDED` en 2,02 segundos. En la prueba de idempotencia, repetir la consulta devolvió el mismo identificador de confirmación. Aprendí a validar las sugerencias con el contrato, los logs y los resultados reales; el código sugerido por la IA necesitó correcciones antes de poder usarlo.
