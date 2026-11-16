@@ -1,21 +1,15 @@
-import json
 import logging
-import os
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import grpc
-from kafka import KafkaConsumer, KafkaProducer
 
 from backend.grpc.caja_client import ClienteCaja
+from backend.kafka import config as kafka_config
+from backend.kafka.consumer_base import ConsumerBase
 from contracts.grpc import caja_pb2
 
-
-BOOTSTRAP_SERVERS = os.getenv(
-    "KAFKA_BOOTSTRAP_SERVERS",
-    "localhost:9092",
-)
 
 ESTADOS_PAGO = {
     caja_pb2.PAGADO: "PAGADO",
@@ -24,35 +18,20 @@ ESTADOS_PAGO = {
 }
 
 
-class ServicioFacturacion:
-    def __init__(self) -> None:
-        self.productor = KafkaProducer(
-            bootstrap_servers=BOOTSTRAP_SERVERS,
-            acks="all",
-            retries=3,
-            key_serializer=lambda clave: (
-                clave.encode("utf-8") if clave is not None else None
-            ),
-            value_serializer=lambda valor: json.dumps(
-                valor,
-                ensure_ascii=False,
-            ).encode("utf-8"),
+class ServicioFacturacion(ConsumerBase):
+    def __init__(self, **opciones) -> None:
+        super().__init__(
+            servicio="facturacion",
+            group_id=kafka_config.GRUPOS_PEDIDO_CREADO["facturacion"],
+            topic=kafka_config.TOPIC_PEDIDO_ESTADO,
+            **opciones,
         )
 
         self.cliente_caja = ClienteCaja()
         self.facturas_emitidas: dict[str, str] = {}
-        self.pedidos_procesados: set[str] = set()
-        self.ids_evento: dict[tuple[str, str], str] = {}
+        self.eventos_publicados: dict[tuple[str, str], dict] = {}
 
-    def publicar_estado(self, evento: dict) -> None:
-        resultado = self.productor.send(
-            "pedido.estado",
-            key=evento["idPedido"],
-            value=evento,
-        )
-        resultado.get(timeout=5)
-
-    def crear_evento(
+    def _crear_evento(
         self,
         id_pedido: str,
         estado: str,
@@ -60,29 +39,45 @@ class ServicioFacturacion:
     ) -> dict:
         clave = (id_pedido, estado)
 
-        if clave not in self.ids_evento:
-            self.ids_evento[clave] = str(uuid4())
+        # Conserva el mismo idEvento y contenido si Kafka requiere reintentar.
+        if clave not in self.eventos_publicados:
+            fecha = (
+                datetime.now(timezone.utc)
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z")
+            )
+            self.eventos_publicados[clave] = {
+                "idEvento": str(uuid4()),
+                "idPedido": id_pedido,
+                "tipo": "FACTURACION",
+                "estado": estado,
+                "origen": "facturacion",
+                "detalle": detalle,
+                "fecha": fecha,
+            }
 
-        fecha = (
-            datetime.now(timezone.utc)
-            .isoformat(timespec="seconds")
-            .replace("+00:00", "Z")
+        return self.eventos_publicados[clave]
+
+    def _publicar_evento(self, evento: dict) -> None:
+        self.producer.publicar(
+            kafka_config.TOPIC_PEDIDO_ESTADO,
+            evento["idPedido"],
+            evento,
         )
+# INICIO: fragmento elaborado con apoyo de IA y revisado por Dome.
+    def procesar(self, evento: dict) -> None:
+        # Facturación solo actúa cuando Caja confirma el pago.
+        if evento.get("tipo") != "PAGO" or evento.get("estado") != "PAGADO":
+            self.log.info(
+                "evento ignorado: tipo=%s estado=%s",
+                evento.get("tipo"),
+                evento.get("estado"),
+            )
+            return
 
-        return {
-            "idEvento": self.ids_evento[clave],
-            "idPedido": id_pedido,
-            "tipo": "FACTURACION",
-            "estado": estado,
-            "origen": "facturacion",
-            "detalle": detalle,
-            "fecha": fecha,
-        }
-
-    def procesar_pedido(self, pedido: dict) -> None:
-        id_pedido = pedido.get("idPedido")
-
-        if not id_pedido or id_pedido in self.pedidos_procesados:
+        id_pedido = evento.get("idPedido")
+        if not id_pedido:
+            self.log.warning("evento PAGO/PAGADO sin idPedido; se ignora")
             return
 
         ultimo_error = "NO_ENCONTRADO"
@@ -100,22 +95,21 @@ class ServicioFacturacion:
                         id_pedido,
                         f"FAC-{uuid4().hex[:12].upper()}",
                     )
-
-                    evento = self.crear_evento(
+                    evento_factura = self._crear_evento(
                         id_pedido,
                         "FACTURADO",
                         {"idFactura": id_factura},
                     )
-                    self.publicar_estado(evento)
-                    self.pedidos_procesados.add(id_pedido)
+                    self._publicar_evento(evento_factura)
+                    self.log.info("pedido %s FACTURADO", id_pedido)
                     return
 
                 ultimo_error = estado_pago
 
             except grpc.RpcError as error:
                 ultimo_error = error.code().name
-                logging.warning(
-                    "Intento %s para el pedido %s: %s",
+                self.log.warning(
+                    "intento %s para %s: gRPC respondió %s",
                     intento,
                     id_pedido,
                     ultimo_error,
@@ -124,7 +118,7 @@ class ServicioFacturacion:
             if intento < 6:
                 time.sleep(10)
 
-        evento = self.crear_evento(
+        evento_factura = self._crear_evento(
             id_pedido,
             "FACTURACION_PENDIENTE",
             {
@@ -132,42 +126,25 @@ class ServicioFacturacion:
                 "ultimoError": ultimo_error,
             },
         )
-        self.publicar_estado(evento)
-        self.pedidos_procesados.add(id_pedido)
-
-    def ejecutar(self) -> None:
-        consumidor = KafkaConsumer(
-            "pedido.creado",
-            bootstrap_servers=BOOTSTRAP_SERVERS,
-            group_id="facturacion",
-            auto_offset_reset="earliest",
-            enable_auto_commit=False,
-            value_deserializer=lambda valor: json.loads(
-                valor.decode("utf-8")
-            ),
+        self._publicar_evento(evento_factura)
+        self.log.info(
+            "pedido %s FACTURACION_PENDIENTE tras 6 intentos",
+            id_pedido,
         )
+    # FIN: fragmento elaborado con apoyo de IA.
 
-        try:
-            for mensaje in consumidor:
-                try:
-                    self.procesar_pedido(mensaje.value)
-                    consumidor.commit()
-                except Exception:
-                    logging.exception(
-                        "No se pudo procesar el pedido; "
-                        "se intentará nuevamente"
-                    )
-                    consumidor.seek(
-                        mensaje.topic_partition,
-                        mensaje.offset,
-                    )
-                    time.sleep(3)
-        finally:
-            consumidor.close()
-            self.cliente_caja.cerrar()
-            self.productor.close()
+
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)-18s %(message)s",
+    )
+    servicio = ServicioFacturacion()
+    try:
+        servicio.iniciar()
+    finally:
+        servicio.cliente_caja.cerrar()
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    ServicioFacturacion().ejecutar()
+    main()

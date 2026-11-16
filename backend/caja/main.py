@@ -1,6 +1,4 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from threading import Event, Thread
 from typing import Literal
 
 from fastapi import FastAPI, Request
@@ -9,8 +7,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from backend.caja.almacen_pagos import almacen_pagos
-from backend.caja.kafka_caja import KafkaCaja, consumir_pedidos_creados
+from backend.caja.kafka_caja import ConsumidorPedidosCaja
 from backend.grpc.caja_server import iniciar_servidor
+from backend.kafka import config as kafka_config
+from backend.kafka.producer import EventProducer, KafkaNoDisponible
 
 
 class SolicitudPago(BaseModel):
@@ -18,7 +18,6 @@ class SolicitudPago(BaseModel):
 
 
 def respuesta_pago(pago: dict) -> dict:
-    """Devuelve solo los campos públicos del contrato REST."""
     return {
         "idPedido": pago["idPedido"],
         "estado": pago["estado"],
@@ -31,24 +30,21 @@ def respuesta_pago(pago: dict) -> dict:
 
 @asynccontextmanager
 async def ciclo_de_vida(app: FastAPI):
-    app.state.kafka = KafkaCaja()
-    app.state.detener_consumidor = Event()
+    # El productor compartido es perezoso: no conecta hasta publicar.
+    app.state.productor = EventProducer()
     app.state.servidor_grpc = iniciar_servidor()
 
-    app.state.hilo_consumidor = Thread(
-        target=consumir_pedidos_creados,
-        args=(app.state.detener_consumidor,),
-        daemon=True,
+    app.state.consumidor_pedidos = ConsumidorPedidosCaja()
+    app.state.hilo_consumidor = (
+        app.state.consumidor_pedidos.iniciar_en_hilo()
     )
-    app.state.hilo_consumidor.start()
 
     try:
         yield
     finally:
-        app.state.detener_consumidor.set()
+        app.state.consumidor_pedidos.detener()
         app.state.hilo_consumidor.join(timeout=3)
         app.state.servidor_grpc.stop(grace=0).wait()
-        app.state.kafka.cerrar()
 
 
 app = FastAPI(
@@ -70,7 +66,7 @@ async def manejar_error_validacion(
         },
     )
 
-
+# INICIO: fragmento elaborado con apoyo de IA y revisado por Dome.
 @app.post("/caja/pagos/{id_pedido}")
 def registrar_pago(
     id_pedido: str,
@@ -88,28 +84,16 @@ def registrar_pago(
             },
         )
 
-    if not pago["eventoPagoPublicado"]:
-        evento = {
-            "idEvento": pago["idEventoPago"],
-            "idPedido": pago["idPedido"],
-            "tipo": "PAGO",
-            "estado": "PAGADO",
-            "origen": "caja",
-            "detalle": {
-                "idConfirmacion": pago["idConfirmacion"],
-                "monto": pago["monto"],
-            },
-            "fecha": (
-                datetime.now(timezone.utc)
-                .isoformat(timespec="seconds")
-                .replace("+00:00", "Z")
-            ),
-        }
+    evento = almacen_pagos.obtener_evento_pago(id_pedido)
 
+    if evento is not None:
         try:
-            app.state.kafka.publicar_estado_pago(evento)
-            almacen_pagos.marcar_evento_pago_publicado(id_pedido)
-        except Exception:
+            app.state.productor.publicar(
+                kafka_config.TOPIC_PEDIDO_ESTADO,
+                id_pedido,
+                evento,
+            )
+        except KafkaNoDisponible:
             return JSONResponse(
                 status_code=503,
                 content={
@@ -120,6 +104,8 @@ def registrar_pago(
                     ),
                 },
             )
+
+        almacen_pagos.marcar_evento_pago_publicado(id_pedido)
 
     return respuesta_pago(pago)
 
@@ -138,3 +124,4 @@ def consultar_pago(id_pedido: str):
         )
 
     return respuesta_pago(pago)
+# FIN: fragmento elaborado con apoyo de IA.
