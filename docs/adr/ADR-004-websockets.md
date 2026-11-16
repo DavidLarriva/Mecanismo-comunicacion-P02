@@ -58,3 +58,10 @@ Un servicio **Notificaciones** con un servidor **WebSocket** (`ws://localhost:87
 - **Conexiones abiertas consumen recursos** (memoria y descriptores por cliente). Para una cafetería es poco; a gran escala habría que repartir clientes entre varias instancias, y cada una necesitaría su propio consumer group o un canal compartido.
 - **Sin autenticación.** Cualquiera que conozca un `idPedido` (UUID difícil de adivinar) puede suscribirse a él. Es una limitación conocida del prototipo.
 - **Estado en memoria.** La deduplicación por `idEvento` se pierde al reiniciar; un evento repetido se reenviaría al cliente, que lo ignora porque los estados solo avanzan.
+
+## Validación (lo que pasó al implementar)
+
+- **Reutilización de la capa Kafka común.** El consumidor de Notificaciones hereda de `ConsumerBase` (ADR-002), igual que la API. Así tiene el mismo commit manual, la misma deduplicación por `idEvento` y la misma validación de combinaciones `tipo/estado/origen` que el resto de servicios.
+- **Prueba con el sistema real** (Kafka, API, Cocina y Notificaciones, `docs/pruebas/prueba-websockets.md`): el cliente se desconectó antes de `LISTO`; al volver, el `GET` devolvió `LISTO` y el evento posterior `ENTREGADO` llegó por WebSocket. Se cumple la medida del Escenario 5.
+- **Hallazgo inesperado: `localhost` en Windows.** En Windows, `localhost` se resolvía primero a IPv6 (`::1`). La API escucha solo en IPv4 (`0.0.0.0`), así que la página y el script recibían `WinError 10061`, mientras que el WebSocket sí conectaba porque la librería `websockets` escucha en IPv4 e IPv6. Se usa `127.0.0.1` en el cliente y en el script de prueba.
+- **Orden de llegada entre `GET` y eventos.** En la prueba real, el primer `GET` ya devolvió `EN_PREPARACION` y luego llegó el mismo estado por push. La regla "cada estado solo avanza" evita que esto confunda o haga retroceder la pantalla.

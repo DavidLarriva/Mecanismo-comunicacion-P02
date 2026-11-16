@@ -94,7 +94,7 @@
 
 <script>
 // ---------- Configuración (se puede cambiar con ?api=...&ws=... en la URL) ----------
-// 127.0.0.1 y no localhost: en Windows localhost puede ir a IPv6 (::1) y la API
+// (bitácora #4) 127.0.0.1 y no localhost: en Windows localhost puede ir a IPv6 (::1) y la API
 // escucha solo en IPv4 (0.0.0.0), así que la conexión sería rechazada.
 const params = new URLSearchParams(location.search);
 const API = params.get("api") || "http://127.0.0.1:8000";
