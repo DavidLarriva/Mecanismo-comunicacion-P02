@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 from fastapi.testclient import TestClient
 
 from backend.cocina.main import Cocina

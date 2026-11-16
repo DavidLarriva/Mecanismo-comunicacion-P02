@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """STUB de la API de Pedidos (David): publica pedidos con la MISMA función que usará la API.
 
   python -m backend.kafka.stubs.simulador_api --n 5 --intervalo 1

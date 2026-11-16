@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """Crea los topics de config.py con las particiones del contrato (seguro de repetir).
 
 Uso (desde la raíz del repo):  python -m backend.kafka.crear_topics

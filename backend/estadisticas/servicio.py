@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """Lógica de Estadísticas (contrato sección 4) y sus dos consumidores.
 
 - pedido.creado -> pedidosRecibidos y porProducto

@@ -1,7 +1,7 @@
 # ADR-002: Uso de Apache Kafka para la comunicación entre servicios
 
 - **Estado:** Aceptado
-- **Fecha:** 2026-11-15
+- **Fecha:** 2026-11-16
 - **Responsable:** Integrante 2 (Carolina Fortmann)
 
 ## Contexto
