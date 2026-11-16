@@ -1,0 +1,18 @@
+$ docker stop kafka
+kafka detenido
+
+$ POST /pedidos  (Idempotency-Key: caida-191309)   [envío A]
+$ POST /pedidos  (Idempotency-Key: caida-191309)   [envío B, 1 s después de A]
+B: {"error":"SOLICITUD_EN_CURSO","mensaje":"Ya hay una solicitud con esta Idempotency-Key en proceso"}  -> HTTP 409 en 0.001307 s
+A: {"error":"SERVICIO_NO_DISPONIBLE","mensaje":"No se pudo registrar el pedido, intente de nuevo"}  -> HTTP 503 en 5.001863 s
+
+$ GET /menu  (Kafka sigue caído)
+-> HTTP 200 en 0.001196 s
+
+$ docker start kafka
+kafka healthy
+
+$ POST /pedidos  (Idempotency-Key: caida-191309)   [reintento del cliente]
+{"idPedido":"52a1efde-b4f2-43a2-b6d4-464b0004c273","idEstudiante":"0102030405","items":[{"idProducto":"EMP-01","nombre":"Empanada de queso","cantidad":3,"precioUnitario":120,"subtotal":360}],"total":360,"estadoPreparacion":"RECIBIDO","estadoPago":"PENDIENTE","estadoFacturacion":null,"entregado":false,"fechaCreacion":"2026-11-16T00:13:21Z"}  -> HTTP 201 en 0.025377 s
+
+Verificación en pedido.creado: 52a1efde-b4f2-43a2-b6d4-464b0004c273 -> 1 evento

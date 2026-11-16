@@ -1,0 +1,9 @@
+2026-11-15 19:13:08,833 api.servicio   Pedido c3137324-70e3-4402-bcec-08d883fda45c creado con clave prueba-191308-secuencial
+2026-11-15 19:13:08,836 api.servicio   Reintento con clave prueba-191308-secuencial: se devuelve el pedido c3137324-70e3-4402-bcec-08d883fda45c
+2026-11-15 19:13:08,842 api.servicio   Clave prueba-191308-concurrente en proceso: solicitud rechazada
+2026-11-15 19:13:08,843 api.servicio   Clave prueba-191308-concurrente en proceso: solicitud rechazada
+2026-11-15 19:13:08,843 api.servicio   Clave prueba-191308-concurrente en proceso: solicitud rechazada
+2026-11-15 19:13:08,843 api.servicio   Clave prueba-191308-concurrente en proceso: solicitud rechazada
+2026-11-15 19:13:08,843 api.servicio   Pedido 3669ef50-e2b3-495e-85d7-343a824b1e9c creado con clave prueba-191308-concurrente
+2026-11-15 19:13:08,845 api.servicio   Clave prueba-191308-secuencial reutilizada con otro contenido
+2026-11-15 19:13:14,969 api.servicio   Kafka no confirmó el pedido 52a1efde-b4f2-43a2-b6d4-464b0004c273: Kafka no confirmó la publicación: KafkaTimeoutError('Timeout after waiting for 5.0 secs.')

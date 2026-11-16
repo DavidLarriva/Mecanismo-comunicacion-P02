@@ -2,7 +2,6 @@ import hashlib
 import json
 import logging
 import threading
-import uuid
 from datetime import datetime, timezone
 
 from backend.kafka.producer import KafkaNoDisponible
@@ -51,7 +50,7 @@ class ServicioPedidos:
             raise ErrorApi(409, "CLAVE_REUTILIZADA", "La Idempotency-Key ya se usó con un pedido distinto")
 
         pedido = {
-            "idPedido": str(uuid.uuid4()),
+            "idPedido": reserva.id_pedido,
             "idEstudiante": solicitud.idEstudiante,
             "items": items,
             "total": sum(item["subtotal"] for item in items),

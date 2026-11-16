@@ -1,0 +1,4 @@
+2026-11-15 19:13:02,902 kafka.api      escuchando 'pedido.estado' con group.id='api'
+2026-11-15 19:13:10,961 api.servicio   Clave caida-191309 en proceso: solicitud rechazada
+2026-11-15 19:13:14,969 api.servicio   Kafka no confirmó el pedido 52a1efde-b4f2-43a2-b6d4-464b0004c273: Kafka no confirmó la publicación: KafkaTimeoutError('Timeout after waiting for 5.0 secs.')
+2026-11-15 19:13:21,308 api.servicio   Pedido 52a1efde-b4f2-43a2-b6d4-464b0004c273 creado con clave caida-191309

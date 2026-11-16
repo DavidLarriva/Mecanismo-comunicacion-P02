@@ -1,0 +1,24 @@
+Caso 1: la misma solicitud enviada dos veces (reintento del cliente)
+  primer envío                       HTTP 201  c3137324-70e3-4402-bcec-08d883fda45c  (132 ms)
+  reintento con la misma clave       HTTP 200  c3137324-70e3-4402-bcec-08d883fda45c  (1 ms)
+  mismo idPedido en ambas respuestas: True
+
+Caso 2: 5 envíos simultáneos con la misma clave
+  envío 1                            HTTP 409  SOLICITUD_EN_CURSO  (4 ms)
+  envío 2                            HTTP 409  SOLICITUD_EN_CURSO  (4 ms)
+  envío 3                            HTTP 409  SOLICITUD_EN_CURSO  (4 ms)
+  envío 4                            HTTP 409  SOLICITUD_EN_CURSO  (4 ms)
+  envío 5                            HTTP 201  3669ef50-e2b3-495e-85d7-343a824b1e9c  (5 ms)
+  códigos: {409: 4, 201: 1}
+  idPedido distintos entre las respuestas exitosas: 1
+
+Caso 3: la misma clave con un pedido distinto
+  cuerpo distinto, clave del caso 1  HTTP 409  CLAVE_REUTILIZADA  (1 ms)
+
+Caso 4: solicitud sin Idempotency-Key
+  sin cabecera                       HTTP 400  FALTA_IDEMPOTENCY_KEY  (1 ms)
+
+Verificación en Kafka (topic pedido.creado)
+  3669ef50-e2b3-495e-85d7-343a824b1e9c: 1 evento(s)
+  c3137324-70e3-4402-bcec-08d883fda45c: 1 evento(s)
+  pedidos creados: 2  eventos publicados: 2

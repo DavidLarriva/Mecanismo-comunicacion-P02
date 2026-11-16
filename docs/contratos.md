@@ -126,17 +126,17 @@ Respuesta (`201`, o `200` si es un reintento):
 | `400` | Lista vacía, cantidad ≤ 0, producto que no está en el menú, campos faltantes | `DATOS_INVALIDOS` |
 | `409` | La clave está `EN_PROCESO` (otra solicitud igual en curso) | `SOLICITUD_EN_CURSO` |
 | `409` | La clave ya se usó con un cuerpo distinto | `CLAVE_REUTILIZADA` |
-| `503` | Kafka no confirmó en 5 s. La clave se borra y el pedido no queda registrado | `SERVICIO_NO_DISPONIBLE` |
+| `503` | Kafka no confirmó en 5 s. La clave queda `LIBERADA` y el pedido no queda registrado | `SERVICIO_NO_DISPONIBLE` |
 
 Registro de claves (en memoria, protegido con un lock):
 ```
-{ clave: { estado: EN_PROCESO | COMPLETADA, hashCuerpo, respuesta, creada } }
+{ clave: { estado: EN_PROCESO | COMPLETADA | LIBERADA, hashCuerpo, idPedido, respuesta, creada } }
 ```
 Reglas:
 1. Con el lock tomado: si la clave no existe, se guarda como `EN_PROCESO`; si existe, se responde según la tabla.
 2. Se publica en Kafka esperando confirmación (fuera del lock).
 3. Si Kafka confirma: se guarda el pedido, la clave pasa a `COMPLETADA` con su respuesta, y se responde `201`.
-4. Si Kafka falla: se borra la clave y se responde `503`.
+4. Si Kafka falla: la clave pasa a `LIBERADA` y se responde `503`. Un reintento con la misma clave y el mismo cuerpo se procesa de nuevo **con el mismo `idPedido`**: si Kafka sí había escrito el primer mensaje, los consumidores lo descartan por `idPedido`.
 5. Una clave `EN_PROCESO` por más de 30 s se considera vencida y se libera.
 
 ### `GET /pedidos/{idPedido}`
@@ -377,3 +377,4 @@ Ese orden evita perder un evento que llegue entre la consulta y la suscripción.
 |---|---|---|---|
 | 1.0 | 2026-11-12 | Versión inicial | _pendiente_ |
 | 1.1 | 2026-11-12 | Python 3.12 o superior y versiones fijadas en `requirements.txt`; se agrega `contracts/pedido.schema.json` | _pendiente_ |
+| 1.2 | 2026-11-15 | Tras un `503` la clave queda `LIBERADA` y el reintento conserva el `idPedido` (antes se borraba la clave) | _pendiente_ |

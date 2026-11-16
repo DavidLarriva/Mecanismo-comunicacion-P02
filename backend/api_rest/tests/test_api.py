@@ -149,6 +149,18 @@ class TestCrearPedido(BaseApi):
         self.assertEqual(reintento.status_code, 201)
         self.assertEqual(len(self.publicador.mensajes), 1)
 
+    def test_reintento_tras_503_conserva_el_id_pedido(self):
+        self.publicador.fallar = True
+        self.crear()
+        self.publicador.fallar = False
+        id_reintento = self.crear().json()["idPedido"]
+        self.assertEqual(self.publicador.mensajes[0][1], id_reintento)
+        otro = {"idEstudiante": "0102030405", "items": [{"idProducto": "CAF-01", "cantidad": 1}]}
+        self.publicador.fallar = True
+        self.crear(clave="clave-2")
+        self.publicador.fallar = False
+        self.assertNotEqual(self.crear(clave="clave-2", cuerpo=otro).json()["idPedido"], id_reintento)
+
     def test_kafka_caido_no_deja_el_pedido_registrado(self):
         self.publicador.fallar = True
         self.crear()
@@ -190,8 +202,20 @@ class TestIdempotencia(unittest.TestCase):
         instante[0] = 31.0
         segunda = registro.reservar("c", "h")
         self.assertEqual(segunda.resultado, "NUEVA")
+        self.assertEqual(segunda.id_pedido, primera.id_pedido)
         registro.liberar("c", primera.token)
         self.assertEqual(registro.estado("c"), "EN_PROCESO")
+
+    def test_clave_liberada_conserva_id_solo_con_el_mismo_cuerpo(self):
+        registro = RegistroIdempotencia(30)
+        primera = registro.reservar("c", "h")
+        registro.liberar("c", primera.token)
+        self.assertEqual(registro.estado("c"), "LIBERADA")
+        self.assertEqual(registro.reservar("c", "h").id_pedido, primera.id_pedido)
+        registro2 = RegistroIdempotencia(30)
+        inicial = registro2.reservar("c", "h")
+        registro2.liberar("c", inicial.token)
+        self.assertNotEqual(registro2.reservar("c", "otra").id_pedido, inicial.id_pedido)
 
 
 class TestConsultarYEstados(BaseApi):

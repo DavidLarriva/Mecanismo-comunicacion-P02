@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 EN_PROCESO = "EN_PROCESO"
 COMPLETADA = "COMPLETADA"
+LIBERADA = "LIBERADA"
 
 NUEVA = "NUEVA"
 EN_CURSO = "EN_CURSO"
@@ -19,6 +20,7 @@ class Entrada:
     huella: str
     token: str
     creada: float
+    id_pedido: str
     respuesta: dict | None = None
 
 
@@ -26,6 +28,7 @@ class Entrada:
 class Reserva:
     resultado: str
     token: str | None = None
+    id_pedido: str | None = None
     respuesta: dict | None = None
 
 
@@ -40,12 +43,12 @@ class RegistroIdempotencia:
         with self._lock:
             entrada = self._claves.get(clave)
             if entrada and entrada.estado == EN_PROCESO and self._vencida(entrada):
-                del self._claves[clave]
-                entrada = None
-            if entrada is None:
+                entrada.estado = LIBERADA
+            if entrada is None or entrada.estado == LIBERADA:
+                id_pedido = entrada.id_pedido if entrada and entrada.huella == huella else str(uuid.uuid4())
                 token = str(uuid.uuid4())
-                self._claves[clave] = Entrada(EN_PROCESO, huella, token, self._reloj())
-                return Reserva(NUEVA, token=token)
+                self._claves[clave] = Entrada(EN_PROCESO, huella, token, self._reloj(), id_pedido)
+                return Reserva(NUEVA, token=token, id_pedido=id_pedido)
             if entrada.huella != huella:
                 return Reserva(REUTILIZADA)
             if entrada.estado == EN_PROCESO:
@@ -63,7 +66,7 @@ class RegistroIdempotencia:
         with self._lock:
             entrada = self._claves.get(clave)
             if entrada and entrada.token == token and entrada.estado == EN_PROCESO:
-                del self._claves[clave]
+                entrada.estado = LIBERADA
 
     def estado(self, clave):
         with self._lock:
