@@ -94,9 +94,11 @@
 
 <script>
 // ---------- Configuración (se puede cambiar con ?api=...&ws=... en la URL) ----------
+// 127.0.0.1 y no localhost: en Windows localhost puede ir a IPv6 (::1) y la API
+// escucha solo en IPv4 (0.0.0.0), así que la conexión sería rechazada.
 const params = new URLSearchParams(location.search);
-const API = params.get("api") || "http://localhost:8000";
-const WS_URL = params.get("ws") || "ws://localhost:8765";
+const API = params.get("api") || "http://127.0.0.1:8000";
+const WS_URL = params.get("ws") || "ws://127.0.0.1:8765";
 const REINTENTO_MS = 3000;                     // contrato: reintentar cada 3 s
 
 // ---------- Estado de la página ----------
