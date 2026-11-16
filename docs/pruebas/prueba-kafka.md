@@ -5,17 +5,17 @@
 
 ## Ejecución
 
-Se inició el broker Kafka y se verificó que los servicios necesarios estuvieran disponibles.
+1. Se inició el broker Kafka y se verificó que los servicios necesarios estuvieran disponibles.
 
-Se inició la API REST y se comprobó su funcionamiento mediante Swagger.
+2. Se inició la API REST y se comprobó su funcionamiento mediante Swagger.
 
-Se detuvo temporalmente el consumidor de Cocina, manteniendo Kafka y la API REST activos.
+3. Se detuvo temporalmente el consumidor de Cocina, manteniendo Kafka y la API REST activos.
 
-Se envió un pedido mediante el endpoint POST /pedidos, utilizando una clave de idempotencia.
+4. Se envió un pedido mediante el endpoint POST /pedidos, utilizando una clave de idempotencia.
 
-Se reinició el consumidor de Cocina mediante el comando python -m backend.cocina.main --demora 5.
+5. Se reinició el consumidor de Cocina mediante el comando python -m backend.cocina.main --demora 5.
 
-Se observaron los mensajes generados durante el procesamiento del pedido y las publicaciones de cambios de estado en el topic pedido.estado.
+6. Se observaron los mensajes generados durante el procesamiento del pedido y las publicaciones de cambios de estado en el topic pedido.estado.
 
 ## Resultado obtenido (real)
 
