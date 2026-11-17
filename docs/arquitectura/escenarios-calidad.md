@@ -94,11 +94,11 @@ Se priorizaron primero los que tienen alta importancia y alta dificultad, porque
 |---|---|
 | Fuente | Cualquier servicio productor (API, cocina, caja, facturación) |
 | Estímulo | Se publica en `pedido.estado` un evento mal formado o con una combinación tipo/estado/origen no permitida (por ejemplo `LISTO` publicado por caja) |
-| Artefacto | Consumidores de `pedido.estado` (API, notificaciones, estadísticas) |
+| Artefacto | Consumidores de `pedido.estado` (API, notificaciones, facturación, estadísticas) |
 | Entorno | Integración entre servicios desarrollados por personas distintas |
 | Respuesta | El consumidor no aplica el evento, lo registra en el log (o lo envía a `pedido.dlq` si está mal formado) y sigue procesando los demás, sin detenerse ni corromper el estado del pedido |
 | Medida de la respuesta | 0 estados modificados por eventos inválidos; el consumidor sigue procesando los siguientes mensajes; todos los eventos que publica la API cumplen `contracts/pedido.schema.json` |
-| Verificación | Pruebas automatizadas: `backend/api_rest/tests` (combinación inválida ignorada, estado que no retrocede) y `backend/kafka/tests/test_eventos.py` (Integrante 2) |
+| Verificación | Pruebas automatizadas: `backend/api_rest/tests` (combinación inválida ignorada, estado que no retrocede) y `backend/kafka/tests/test_eventos.py` (Integrante 2). Además, el 16/11 se validaron contra `contracts/pedido.schema.json` los 74 eventos reales que había en Kafka (17 de `pedido.creado` y 57 de `pedido.estado`, publicados por la API, Cocina, Caja y Facturación): todos lo cumplen |
 
 ---
 

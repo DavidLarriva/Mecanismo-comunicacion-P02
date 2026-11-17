@@ -33,6 +33,7 @@
 | `config.py` | Configuración por variables de entorno |
 | `tests/test_api.py` | Pruebas automatizadas (sin Kafka, con un productor falso) |
 | `pruebas/prueba_idempotencia.py` | Prueba de comportamiento contra la API y Kafka reales |
+| `pruebas/prueba_flujo_completo.py` | Prueba de integración: un pedido recorre REST, Kafka, gRPC y WebSocket |
 
 ## Requisitos
 
@@ -136,6 +137,12 @@ Cubren la creación, los reintentos, la clave reutilizada, la falta de clave, lo
 .venv/bin/python -m backend.api_rest.pruebas.prueba_idempotencia
 ```
 Envía la misma solicitud dos veces, 5 solicitudes simultáneas con la misma clave, una clave reutilizada con otro pedido y una solicitud sin clave. Al final **lee el topic `pedido.creado` desde el inicio** y muestra cuántos eventos hay por pedido: debe haber exactamente uno. Los resultados obtenidos y su análisis están en `docs/pruebas/prueba-rest.md`.
+
+**Prueba de integración** (necesita Kafka y los seis servicios en marcha, ver el README raíz):
+```bash
+.venv/bin/python -m backend.api_rest.pruebas.prueba_flujo_completo
+```
+Crea un pedido, se suscribe por WebSocket, intenta entregarlo antes de tiempo, lo paga dos veces en Caja y lo entrega dos veces. Al final muestra los eventos del pedido en Kafka y las estadísticas de antes y después. Los resultados están en `docs/pruebas/integracion.md`.
 
 **Kafka caído:**
 ```bash

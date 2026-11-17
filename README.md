@@ -108,7 +108,7 @@ Cada servicio tiene más detalle en su propia carpeta: `backend/api_rest/README.
 | Kafka | Consumidor de Cocina detenido (`docs/pruebas/prueba-kafka.md`) | Detener Cocina, crear un pedido y volver a levantarla |
 | gRPC | Caja no disponible y pago repetido (`docs/pruebas/prueba-grpc.md`) | Ver el documento de la prueba |
 | WebSocket | Cliente desconectado y reconectado (`docs/pruebas/prueba-websockets.md`) | `.venv/bin/python -m backend.websockets.prueba_reconexion --espera 15` |
-| Integración | Flujo completo (`docs/pruebas/integracion.md`) | Todos los servicios en marcha |
+| Integración | Flujo completo con los cuatro mecanismos (`docs/pruebas/integracion.md`) | Con Kafka y los seis servicios en marcha: `.venv/bin/python -m backend.api_rest.pruebas.prueba_flujo_completo` |
 
 Pruebas automatizadas de todo el repositorio (no necesitan Kafka ni los servicios en marcha):
 ```bash

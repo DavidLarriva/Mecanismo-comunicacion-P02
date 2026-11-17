@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """Vigila que infra/docker-compose.yml cree los mismos topics que backend/kafka/config.py."""
 import re
 from pathlib import Path

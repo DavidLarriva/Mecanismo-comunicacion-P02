@@ -1,3 +1,4 @@
+# Realizado con IA y revisado por David Larriva
 import logging
 from contextlib import asynccontextmanager
 from typing import Annotated

@@ -1,3 +1,4 @@
+# Realizado con IA y revisado por David Larriva
 from backend.kafka import config as kafka_config
 from backend.kafka.consumer_base import ConsumerBase
 

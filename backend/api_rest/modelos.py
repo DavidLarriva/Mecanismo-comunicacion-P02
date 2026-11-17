@@ -1,3 +1,4 @@
+# Realizado con IA y revisado por David Larriva
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt

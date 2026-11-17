@@ -1,8 +1,8 @@
-"""STUB de Caja y Facturación (responsable: Dome). Solo para probar mientras Dome no entrega lo real.
-
+# [IA]
+# Revisado por: Carolina Fortmann y Domenica Uyunkar
+"""Stub de servicio para pruebas de integración.
 NO ejecutar junto al servicio real del mismo nombre: comparten consumer group y se repartirían los pedidos.
   python -m backend.kafka.stubs.servicio_stub caja
-  python -m backend.kafka.stubs.servicio_stub facturacion
   ... --fallar-todo    # procesar() siempre falla: sirve para ver reintentos y DLQ
 """
 import argparse
@@ -20,18 +20,15 @@ class ServicioStub(ConsumerBase):
     def procesar(self, ev):
         if self.fallar_todo:
             raise RuntimeError("fallo simulado")
-        if self.servicio == "caja":      # simula que el cajero cobró al instante
-            self.publicar_estado(ev["idPedido"], "PAGO", "PAGADO",
-                                 {"idConfirmacion": "PAG-STUB", "monto": ev["total"]})
-        else:                            # facturación
-            self.publicar_estado(ev["idPedido"], "FACTURACION", "FACTURADO", {"idFactura": "FAC-STUB"})
+        self.publicar_estado(ev["idPedido"], "PAGO", "PAGADO",
+                             {"idConfirmacion": "PAG-STUB", "monto": ev["total"]})
         self.log.info("procesado %s", ev["idPedido"][:8])
 
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)-14s %(message)s")
     ap = argparse.ArgumentParser()
-    ap.add_argument("servicio", choices=["caja", "facturacion"])
+    ap.add_argument("servicio", choices=["caja"])
     ap.add_argument("--fallar-todo", action="store_true")
     a = ap.parse_args()
     ServicioStub(a.servicio, a.fallar_todo).iniciar()

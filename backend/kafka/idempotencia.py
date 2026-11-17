@@ -1,3 +1,5 @@
+# [IA]
+# Revisado por: Carolina Fortmann
 """Registro en memoria de claves ya procesadas (deduplicación del consumidor).
 
 LIMITACIÓN (documentar en el ADR): vive en memoria; se pierde al reiniciar el proceso.
