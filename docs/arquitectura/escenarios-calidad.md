@@ -69,8 +69,8 @@ Como en el árbol de utilidad, calificamos cada escenario por su **importancia**
 | Artefacto | API de Pedidos y Kafka (`pedido.creado`) |
 | Entorno | Carga normal o alta, con uno o más consumidores detenidos por un tiempo |
 | Respuesta | La API responde apenas Kafka confirma el evento, sin esperar a ningún servicio interno. Los eventos quedan en Kafka y cada servicio los procesa a su ritmo, incluso después de reiniciar |
-| Medida de la respuesta | `POST /pedidos` responde en < 200 ms aunque no haya ningún consumidor funcionando, y no se pierde ningún evento cuando un consumidor se reinicia |
-| Verificación | En `docs/pruebas/prueba-rest.md`, con cocina, caja y facturación **detenidas**, la API respondió `201` en 132 ms en el primer pedido, que incluye conectar el productor, y en 5 ms en los siguientes. El procesamiento posterior de los eventos está en `docs/pruebas/prueba-kafka.md` (Integrante 2) |
+| Medida de la respuesta | `POST /pedidos` responde `201` aunque los consumidores estén detenidos, y no se pierde ningún evento cuando un consumidor se reinicia |
+| Verificación | `docs/pruebas/prueba-kafka.md` (Integrante 2). Con Cocina **detenida** la API respondió `201` y el pedido quedó guardado en Kafka. Al reiniciar, Cocina lo procesó y publicó `EN_PREPARACION` y `LISTO` en los offsets 8 y 9, sin perder el evento |
 
 ## Escenario 5: Recuperación del cliente tras una desconexión
 

@@ -36,13 +36,12 @@ Por lo tanto, se comprobó que, después de reiniciar Cocina, el consumidor pudo
 
 ## Evidencias
 
-Se deben adjuntar las capturas reales obtenidas durante la ejecución:
+Las capturas de la ejecución están en `docs/pruebas/evidencias/kafka/`.
 
-1. **Registro del pedido en Swagger:** evidencia de la solicitud `POST /pedidos` y del identificador `idPedido` generado.
-2. **Registros de Cocina:** evidencia de los estados `EN_PREPARACION` y `LISTO`, junto con la clave del pedido.
-3. **Publicaciones en Kafka:** registros que muestran el topic `pedido.estado`, la partición 0 y los offsets 8 y 9.
-
-Las capturas deben almacenarse en `docs/pruebas/evidencias/kafka/`, utilizando los nombres de archivo correspondientes a las imágenes guardadas.
+1. `01-kafka-activo.png`: el broker Kafka en marcha.
+2. `02-cocina-detenida.png`: el consumidor de Cocina detenido.
+3. `03-pedido-publicado.png`: la respuesta de Swagger a `POST /pedidos`, con el `idPedido` generado.
+4. `04-cocina-recuperada.png`: los registros de Cocina al volver, con los estados `EN_PREPARACION` y `LISTO`, la partición 0 y los offsets 8 y 9.
 
 ## Explicación (conceptos del Capítulo 2)
 

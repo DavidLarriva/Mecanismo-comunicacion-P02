@@ -1,6 +1,6 @@
 # ADR-005: Selección de mecanismos y arquitectura conjunta
 
-- **Estado:** Propuesto
+- **Estado:** Aceptado
 - **Fecha:** 2026-11-16
 - **Responsable:** Todos
 - **Escenarios de calidad relacionados:** los seis (`docs/arquitectura/escenarios-calidad.md`)
@@ -71,4 +71,4 @@ En la prueba de integración (`docs/pruebas/integracion.md`) se vieron los cuatr
 - **Más piezas en marcha.** Para el flujo completo hay que levantar Kafka y seis servicios. Lo resuelven el `docker-compose` y el README, pero la demostración es más frágil que un sistema monolítico.
 - **Kafka es un punto único.** Con el broker caído no se crean pedidos (`503`, escenario 1). Se aceptó porque, con datos en memoria, aceptar un pedido sin publicarlo podría perderlo.
 - **Consistencia eventual.** El `GET` y las notificaciones van unos milisegundos detrás de lo que publicó cada servicio.
-- **Alcance mayor que el enunciado.** El grupo usa cuatro mecanismos en lugar de tres. Hay que confirmar con el docente que acepta este alcance.
+- **Alcance mayor que el enunciado.** El grupo usa cuatro mecanismos en lugar de tres, lo que suma trabajo de integración. El docente aprobó este alcance.

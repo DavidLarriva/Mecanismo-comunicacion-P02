@@ -17,13 +17,12 @@ Si el estudiante pierde la conexión antes de que cocina publique `LISTO`:
 
 Servicios corriendo: Kafka, API (8000), Cocina con `--demora 10`, Notificaciones (8765). Caja (8001) es opcional.
 
-**Opción A, automática** (deja un log con hora; las evidencias van en `docs/pruebas/evidencias/websockets/`, según la convención del equipo):
+**Opción A, automática.** Deja un log con la hora de cada paso en `docs/pruebas/evidencias/websockets/`.
 ```bash
 python -m backend.websockets.prueba_reconexion --espera 15 | tee docs/pruebas/evidencias/websockets/reconexion.txt
 ```
-Guardar también el log de la terminal del servidor en `docs/pruebas/evidencias/websockets/log-servidor.txt`.
 
-**Opción B, con la página** (para el video):
+**Opción B, manual con la página del estudiante.**
 1. Abrir `backend/websockets/cliente/index.html`, elegir productos y pulsar **Crear pedido**.
 2. Ver `RECIBIDO` y luego `EN_PREPARACION` por push.
 3. Antes de que pasen los 10 s de cocina, pulsar **Simular caída de conexión** (o cerrar la pestaña o apagar el Wi-Fi).
