@@ -9,6 +9,7 @@ Política de entrega (at-least-once + deduplicación):
   4. Agotados los reintentos, o mensaje mal formado: topic DLQ + commit (no bloquea la partición).
   5. Si ni la DLQ responde: NO se hace commit y el consumidor se detiene (se reprocesa al reiniciar).
   6. Combinación de estado no válida: se ignora y se registra en el log (contrato, sección 1).
+  7. Si Kafka se cae mientras consume: se cierra el consumidor y se vuelve a crear cada 5 s.
 """
 import json
 import logging
@@ -88,30 +89,38 @@ class ConsumerBase(ABC):
         )
 
     def run(self):
-        while self.activo and self._consumer is None:      # espera a que Kafka esté disponible
+        while self.activo:
+            if self._consumer is None:                      # espera a que Kafka esté disponible
+                try:
+                    self._consumer = self._crear_consumer()
+                except KafkaError as e:
+                    self.log.warning("Kafka no disponible (%r); reintento en 5 s", e)
+                    self._parar.wait(5)
+                    continue
+                self.log.info("escuchando '%s' con group.id='%s'", self.topic, self.group_id)
             try:
-                self._consumer = self._crear_consumer()
-            except KafkaError as e:
-                self.log.warning("Kafka no disponible (%r); reintento en 5 s", e)
-                self._parar.wait(5)
-        if not self.activo:
-            return
-        self.log.info("escuchando '%s' con group.id='%s'", self.topic, self.group_id)
-        try:
-            while self.activo:
                 lotes = self._consumer.poll(timeout_ms=1000)
                 for registros in lotes.values():
                     for registro in registros:
                         if not self.activo:
                             break
                         self._manejar_mensaje(registro)
+            except Exception as e:                          # Kafka se cayó: se reconecta, no termina
+                self.log.warning("se perdió la conexión con Kafka (%r); reconexión en 5 s", e)
+                self._cerrar_consumer()
+                self._parar.wait(5)
+        self._cerrar_consumer()
+
+    def _cerrar_consumer(self):
+        if self._consumer is None:
+            return
+        try:
+            self._consumer.close()
         except Exception:
-            self.log.exception("el consumidor terminó por un error inesperado")
+            pass
         finally:
-            try:
-                self._consumer.close()
-            finally:
-                self.log.info("consumidor cerrado")
+            self._consumer = None
+            self.log.info("consumidor cerrado")
 
     # ---- manejo de un mensaje ----
     def _manejar_mensaje(self, rec):

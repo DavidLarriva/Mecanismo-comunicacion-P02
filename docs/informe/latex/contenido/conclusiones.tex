@@ -1,0 +1,43 @@
+\section{Conclusiones}
+
+No hay un mecanismo que sirva para todo, y el proyecto lo mostró en un caso concreto. REST funcionó bien donde una persona espera una respuesta, Kafka donde los servicios deben seguir trabajando aunque otro se caiga, gRPC en la única consulta interna que necesitaba una confirmación inmediata y WebSocket para avisar al estudiante sin que tenga que preguntar.
+
+Las fallas que pedía la consigna se resolvieron con decisiones de diseño más que con código extra. La clave de idempotencia evitó pedidos duplicados, esperar la confirmación de Kafka evitó responder \cod{201} sin evento, el deadline evitó que Facturación se bloqueara y el orden de suscribirse antes de consultar evitó que el estudiante perdiera un cambio. En todos los casos combinar la semántica al menos una vez del cliente con la de a lo sumo una vez del servidor dejó un solo efecto.
+
+El resultado inesperado de la prueba de gRPC fue lo que más nos enseñó. Usar una llamada síncrona para esperar algo que ocurre cuando el estudiante quiere dejaba pedidos sin factura, y la solución fue combinar los dos tipos de comunicación, un evento asíncrono que avisa y una llamada síncrona que confirma.
+
+Las principales limitaciones son que los datos viven en memoria, que la API funciona como una sola instancia y que no hay autenticación. Kafka también es un punto único, y con el broker caído no se pueden crear pedidos.
+
+\subsection{Uso de inteligencia artificial}
+
+Usamos herramientas de IA como apoyo. Las consultas y la reflexión de cada integrante están en \cod{docs/bitacora-ia.md}, y los archivos de código hechos con ayuda de IA llevan una marca con el nombre de quien los revisó.
+
+\subsection{Cómo ejecutar el sistema}
+
+Todos los comandos se ejecutan desde la raíz del repositorio, con el entorno virtual activado y cada servicio en su propia terminal.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l Y@{}}
+\toprule
+\textbf{Servicio} & \textbf{Comando} \\
+\midrule
+Kafka & \cod{docker compose -f infra/docker-compose.yml up -d} \\
+API de Pedidos & \cod{python -m backend.api\_rest.main} \\
+Cocina & \cod{python -m backend.cocina.main --demora 5} \\
+Estadísticas & \cod{python -m backend.estadisticas.main} \\
+Caja & \cod{python -m uvicorn backend.caja.main:app --port 8001} \\
+Facturación & \cod{python -m backend.facturacion.main} \\
+Notificaciones & \cod{python -m backend.websockets.servidor} \\
+Cliente web & abrir \cod{backend/websockets/cliente/index.html} \\
+Pruebas automáticas & \cod{python -m pytest -q}, 62 pruebas \\
+Prueba de integración & \cod{python -m backend.api\_rest.pruebas.prueba\_flujo\_completo} \\
+\bottomrule
+\end{tabularx}
+\caption{Comandos para levantar y probar el sistema.}
+\label{tab:ejecucion}
+\end{table}
+
+El código, los ADR completos, las pruebas con sus evidencias y la bitácora están en el repositorio del grupo, \href{https://github.com/DavidLarriva/Mecanismo-comunicacion-P02}{\cod{github.com/DavidLarriva/Mecanismo-comunicacion-P02}}.
+

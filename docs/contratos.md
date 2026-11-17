@@ -79,8 +79,10 @@ El cliente no manda precios. La API toma el nombre y el precio del menú y calcu
 ```json
 [
   { "idProducto": "SAN-01", "nombre": "Sanduche de pollo", "precio": 250 },
+  { "idProducto": "EMP-01", "nombre": "Empanada de queso", "precio": 120 },
   { "idProducto": "JUG-01", "nombre": "Jugo de naranja", "precio": 100 },
-  { "idProducto": "CAF-01", "nombre": "Café americano", "precio": 150 }
+  { "idProducto": "CAF-01", "nombre": "Café americano", "precio": 150 },
+  { "idProducto": "AGU-01", "nombre": "Agua sin gas", "precio": 80 }
 ]
 ```
 

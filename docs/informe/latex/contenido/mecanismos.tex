@@ -1,0 +1,243 @@
+\section{Mecanismos de comunicación y decisiones}
+
+Cada mecanismo tiene su ADR en el repositorio. Aquí resumimos qué decidimos, por qué y qué alternativas descartamos. El criterio general viene de la guía de selección del Capítulo 2 \parencite{timbi2026comunicacion}: lo síncrono va donde alguien necesita una respuesta para seguir, y lo asíncrono donde basta con que la información llegue.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l Y Y@{}}
+\toprule
+\textbf{Mecanismo} & \textbf{Tipo} & \textbf{Dónde se usa} & \textbf{Por qué ahí} \\
+\midrule
+\textcolor{rest}{\textbf{REST}} & Síncrono & Cliente y cajero con la API, cajero con Caja, administración con Estadísticas & El estudiante necesita su \cod{idPedido} enseguida y HTTP funciona en cualquier navegador \\
+\textcolor{kafka}{\textbf{Kafka}} & Asíncrono, persistente & Entre todos los servicios, con \cod{pedido.creado} y \cod{pedido.estado} & La API no espera a nadie y un servicio caído recupera los eventos al volver \\
+\textcolor{grpc}{\textbf{gRPC}} & Síncrono con deadline & Facturación pregunta a Caja con \cod{ConfirmarPago} & Hace falta una respuesta confirmada antes de emitir la factura \\
+\textcolor{ws}{\textbf{WebSocket}} & Asíncrono, server push & Notificaciones avisa al estudiante & El servidor avisa apenas cambia el estado, sin que el cliente consulte \\
+\bottomrule
+\end{tabularx}
+\caption{Resumen de los cuatro mecanismos (ADR-005).}
+\label{tab:mecanismos}
+\end{table}
+
+\subsection{REST: API de Pedidos (ADR-001)}
+
+La API sigue el estilo REST \parencite{fielding2000architectural}, está hecha con FastAPI y tiene cuatro rutas. El cliente solo manda el producto y la cantidad, y el total lo calcula el servidor con el menú, en centavos enteros para no tener errores de redondeo.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l Y@{}}
+\toprule
+\textbf{Ruta} & \textbf{Éxito} & \textbf{Errores principales} \\
+\midrule
+\cod{GET /menu} & \cod{200} & ninguno \\
+\cod{POST /pedidos} & \cod{201} nuevo, \cod{200} reintento & \cod{400} datos o falta la clave, \cod{409} en curso o clave reutilizada, \cod{503} Kafka no confirmó \\
+\cod{GET /pedidos/\{id\}} & \cod{200} & \cod{404} no existe \\
+\cod{PATCH /pedidos/\{id\}/entregar} & \cod{200}, también si se repite & \cod{409} no está \cod{LISTO} o no está \cod{PAGADO} \\
+\bottomrule
+\end{tabularx}
+\caption{Rutas de la API de Pedidos. Todos los errores traen los campos \cod{error} y \cod{mensaje}.}
+\label{tab:rutas}
+\end{table}
+
+La parte más delicada es no duplicar pedidos. El cliente genera una \cod{Idempotency-Key} por pedido y la API la guarda en un registro con un lock. La Figura~\ref{fig:clave} muestra los estados de la clave.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=1.2cm and 3.1cm]
+    \node[estado, minimum width=2.6cm] (nueva) {clave nueva};
+    \node[estado, minimum width=2.6cm, right=of nueva, fill=grpc!12] (proc) {EN\_PROCESO};
+    \node[estado, minimum width=2.6cm, right=of proc, fill=ws!15] (comp) {COMPLETADA};
+    \node[estado, minimum width=2.6cm, below=1.6cm of proc, fill=falla!10] (lib) {LIBERADA};
+
+    \draw[flecha] (nueva) -- node[above, font=\scriptsize]{se reserva con lock} (proc);
+    \draw[flecha] (proc) -- node[above, font=\scriptsize]{Kafka confirma} node[below, font=\scriptsize]{responde \cod{201}} (comp);
+    \draw[flecha] ([xshift=-4mm]proc.south) -- node[left, font=\scriptsize, align=right, pos=0.4]{Kafka no confirma\\en 5 s, \cod{503}} ([xshift=-4mm]lib.north);
+    \draw[flecha] ([xshift=4mm]lib.north) -- node[right, font=\scriptsize, align=left]{reintento con\\el mismo \cod{idPedido}} ([xshift=4mm]proc.south);
+
+    \node[nota, above=0.35cm of proc] {otra solicitud igual recibe\\\cod{409 SOLICITUD\_EN\_CURSO}};
+    \node[nota, below=0.35cm of comp] {un reintento recibe \cod{200}\\con la respuesta guardada};
+    \node[nota, left=1.2cm of lib, align=right] {si la clave llega con otro cuerpo\\(hash SHA-256 distinto) recibe\\\cod{409 CLAVE\_REUTILIZADA}};
+\end{tikzpicture}
+\caption{Estados de la clave de idempotencia. \cod{LIBERADA} conserva el \cod{idPedido} porque un \cod{503} no prueba que Kafka no haya escrito el mensaje. Si sí lo escribió, los consumidores descartan el duplicado por \cod{idPedido}.}
+\label{fig:clave}
+\end{figure}
+
+Descartamos gRPC para el cliente porque los navegadores necesitarían gRPC-Web y un proxy, crear pedidos por WebSocket porque habría que inventar un protocolo de petición y respuesta, y aceptar con \cod{202} para publicar después porque, con datos en memoria, ese pedido se perdería al reiniciar.
+
+\subsection{Kafka: comunicación entre servicios (ADR-002)}
+
+Kafka corre en Docker en modo KRaft y guarda los eventos en un log persistente \parencite{kafka2024documentation}. Hay dos topics de tres particiones, creados a propósito porque la creación automática usaría una sola, y un tercer topic \cod{pedido.dlq} para los mensajes que fallan después de reintentar.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    part/.style={draw=kafka, fill=kafka!6, minimum height=0.55cm, minimum width=6.2cm, anchor=west},
+    ev/.style={draw=kafka, fill=kafka!35, minimum size=0.42cm, inner sep=0pt, font=\tiny}
+]
+    \node[font=\small\bfseries, text=kafka, anchor=west] at (0,1.1) {Topic \cod{pedido.estado}};
+    \foreach \i/\y in {0/0.3, 1/-0.45, 2/-1.2} {
+        \node[part] (p\i) at (0,\y) {};
+        \node[font=\scriptsize, text=kafka, anchor=east] at (6.1,\y) {P\i};
+    }
+    \foreach \k/\t in {0/EP, 1/PE, 2/LI, 3/PA, 4/FA, 5/EN} {
+        \node[ev] at (0.4+\k*0.55,0.3) {\t};
+    }
+    \node[ev, fill=gris!20, draw=gris] at (0.4,-0.45) {};
+    \node[ev, fill=gris!20, draw=gris] at (0.95,-0.45) {};
+    \node[ev, fill=gris!20, draw=gris] at (0.4,-1.2) {};
+    \draw[flecha, gris] (0.2,-1.75) -- node[below, font=\scriptsize]{los offsets crecen hacia la derecha} (6.0,-1.75);
+
+    \node[caja, font=\scriptsize, anchor=east, align=left] (prod) at (-0.9,-0.45)
+        {Cocina, Caja,\\Facturación y API\\publican con clave\\\cod{idPedido}};
+    \draw[flecha, kafka] (prod.east) -- (-0.45,-0.45) |- (p0.west);
+
+    \foreach \g/\y in {api/0.9, notificaciones/0.15, facturacion/-0.6, estadisticas/-1.35} {
+        \node[caja, font=\scriptsize, minimum width=2.6cm, minimum height=0.55cm, anchor=west] (g\g) at (7.2,\y) {grupo \cod{\g}};
+        \draw[flecha, kafka] (6.25,-0.45) -- (g\g.west);
+    }
+\end{tikzpicture}
+\caption{Particiones (P0, P1 y P2) y consumer groups. Todos los eventos de un pedido llevan la misma clave y caen en la misma partición, donde Kafka garantiza el orden. Cada grupo lee el topic completo, así que el mismo evento les llega a los cuatro. EP, PE, LI, PA, FA y EN son los seis estados de un pedido.}
+\label{fig:particiones}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l c l Y@{}}
+\toprule
+\textbf{Topic} & \textbf{Particiones} & \textbf{Publican} & \textbf{Consumer groups} \\
+\midrule
+\cod{pedido.creado} & 3 & API & \cod{cocina}, \cod{caja}, \cod{estadisticas} \\
+\cod{pedido.estado} & 3 & API, Cocina, Caja, Facturación & \cod{api}, \cod{notificaciones}, \cod{facturacion}, \cod{estadisticas} \\
+\cod{pedido.dlq} & 1 & cualquier consumidor & mensajes que fallaron tras los reintentos \\
+\bottomrule
+\end{tabularx}
+\caption{Topics del sistema.}
+\label{tab:topics}
+\end{table}
+
+El productor usa \cod{acks='all'} y espera la confirmación hasta 5 s. El consumidor hace el commit del offset recién después de procesar el mensaje, así que si se cae a la mitad lo vuelve a leer. Eso hace que Kafka entregue al menos una vez, y por eso cada consumidor descarta los repetidos, \cod{pedido.creado} por \cod{idPedido} y \cod{pedido.estado} por \cod{idEvento}. Descartamos REST entre servicios porque la API tendría que esperar a cada uno, y Sockets TCP porque habría que construir a mano el protocolo y los mensajes se perderían con el receptor caído.
+
+\subsection{gRPC: Facturación consulta a Caja (ADR-003)}
+
+Antes de emitir una factura, Facturación necesita saber por la fuente autorizada si el pago está confirmado. Para eso usa una llamada gRPC unaria definida en \cod{caja.proto} con Protocol Buffers, lo que da un contrato tipado y código generado para cliente y servidor \parencite{grpc2024documentation}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    msg/.style={draw, rounded corners=2pt, fill=grpc!8, draw=grpc, align=left, font=\scriptsize\ttfamily, inner sep=5pt}
+]
+    \node[msg] (req) {ConfirmarPagoRequest\\\quad id\_pedido};
+    \node[caja, right=2.2cm of req, minimum width=3.4cm] (srv) {\textbf{Caja}\\\scriptsize rpc ConfirmarPago};
+    \node[msg, right=1.0cm of srv] (res) {ConfirmarPagoResponse\\\quad estado: PAGADO | PENDIENTE\\\quad\quad\quad | NO\_ENCONTRADO\\\quad id\_confirmacion, monto\\\quad repetida};
+    \draw[flecha, grpc, very thick] (req) -- node[above, font=\scriptsize]{deadline 2 s} (srv);
+    \draw[flecha, grpc, very thick] (srv) -- (res);
+\end{tikzpicture}
+\caption{Contrato de \cod{ConfirmarPago}. El campo \cod{repetida} indica que esa confirmación ya se había entregado, lo que da la semántica a lo sumo una vez.}
+\label{fig:proto}
+\end{figure}
+
+Si Caja no responde, el deadline corta la llamada a los 2 s con \cod{DEADLINE\_EXCEEDED} y Facturación reintenta cada 10 s, hasta seis veces. La Figura~\ref{fig:reintentos} muestra el peor caso, cuando todas las llamadas agotan el deadline.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=0.2cm, y=1cm]
+    \draw[flecha, gris] (0,0) -- (66,0) node[right, font=\scriptsize]{s};
+    \foreach \t in {0,12,24,36,48,60} {
+        \fill[grpc] (\t,0.15) rectangle (\t+2,0.55);
+        \node[font=\tiny, above] at (\t+1,0.55) {2 s};
+        \draw[gris] (\t,0.05) -- (\t,-0.05) node[below, font=\scriptsize]{\t};
+    }
+    \foreach \t in {2,14,26,38,50} {
+        \draw[gris, dashed] (\t,0.35) -- (\t+10,0.35);
+        \node[font=\tiny, text=gris, above] at (\t+5,0.35) {espera 10 s};
+    }
+    \foreach \i/\t in {1/0,2/12,3/24,4/36,5/48,6/60} {
+        \node[font=\scriptsize, text=grpc] at (\t+1,-0.7) {\i};
+    }
+    \node[font=\scriptsize, text=grpc, anchor=east] at (-1,-0.7) {intento};
+    \draw[flecha, falla] (62,0.35) -- (62,1.25) node[above, font=\scriptsize, text=falla, align=center]{\cod{FACTURACION\_PENDIENTE}\\a los 62 s};
+\end{tikzpicture}
+\caption{Política de reintentos de Facturación en el peor caso: 6 llamadas de 2 s y 5 esperas de 10 s suman 62 s. Como el consumidor es secuencial, otros pedidos pueden esperar ese tiempo.}
+\label{fig:reintentos}
+\end{figure}
+
+Una prueba nos mostró un problema de diseño. Al principio Facturación consumía \cod{pedido.creado} y empezaba a preguntar apenas se creaba el pedido. Si el estudiante pagaba después del último intento, el pedido se quedaba sin factura aunque estuviera pagado. En la versión 1.3 del contrato Facturación se activa con el evento \cod{PAGO/PAGADO}, que Kafka guarda hasta que alguien lo procese (Figura~\ref{fig:v13}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=0.11cm, y=1cm]
+    % Antes
+    \node[font=\small\bfseries, anchor=west] at (0,1.55) {Antes: se activaba con \cod{pedido.creado}};
+    \draw[gris] (0,0) -- (120,0);
+    \fill[grpc!70] (0,-0.2) rectangle (62,0.2);
+    \node[font=\scriptsize, text=white] at (31,0) {6 intentos, Caja responde PENDIENTE};
+    \node[draw=falla, fill=falla!10, font=\scriptsize, rounded corners=2pt] (fp) at (78,0.62) {FACTURACION\_PENDIENTE};
+    \draw[flecha, falla] (62,0.2) -- (fp.south west);
+    \draw[flecha, rest] (95,0.9) node[above, font=\scriptsize]{el estudiante paga} -- (95,0.25);
+    \node[font=\scriptsize, text=falla] at (100,-0.5) {nadie factura};
+    \node[font=\scriptsize, text=gris] at (0,-0.45) {crea};
+
+    % Después
+    \node[font=\small\bfseries, anchor=west] at (0,-1.4) {Ahora: se activa con \cod{PAGO/PAGADO}};
+    \draw[gris] (0,-2.4) -- (120,-2.4);
+    \node[font=\scriptsize, text=gris] at (0,-2.85) {crea};
+    \draw[flecha, rest] (95,-1.5) node[above, font=\scriptsize]{} -- (95,-2.15);
+    \node[font=\scriptsize, anchor=east, text=rest] at (94,-1.75) {paga, Caja publica PAGADO};
+    \fill[grpc!70] (95,-2.6) rectangle (99,-2.2);
+    \node[draw=ws, fill=ws!15, font=\scriptsize, rounded corners=2pt, anchor=west] at (101,-2.4) {FACTURADO};
+    \node[font=\scriptsize, text=grpc] at (97,-2.95) {gRPC};
+\end{tikzpicture}
+\caption{Por qué cambiamos el disparador de Facturación. El evento solo avisa que hubo un pago, y gRPC sigue confirmándolo con Caja antes de facturar.}
+\label{fig:v13}
+\end{figure}
+
+Descartamos usar Kafka también para esta consulta, porque habría que publicar la pregunta y esperar la respuesta en otro topic, y gRPC entre todos los servicios, porque volvería síncrono lo que hoy es asíncrono. RPC/RMI clásico serviría, pero sin contrato tipado ni deadline por llamada, y RMI exige Java en los dos lados.
+
+\subsection{WebSocket: notificaciones al estudiante (ADR-004)}
+
+El servidor de notificaciones lee \cod{pedido.estado} con su propio consumer group y le reenvía cada evento solo a los clientes suscritos a ese pedido. La conexión empieza como HTTP con \cod{Upgrade: websocket}, el servidor responde \cod{101 Switching Protocols} y desde ahí queda abierta en las dos direcciones \parencite{mdn2024websockets}.
+
+El WebSocket es transitorio. Si el estudiante no está conectado el aviso se descarta, pero el estado no se pierde porque lo tiene la API. Por eso el cliente sigue un orden fijo, primero se suscribe y después consulta con \cod{GET}. La Figura~\ref{fig:orden} muestra qué pasaría con el orden contrario.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1cm, y=1cm]
+    \foreach \y/\titulo/\a/\b/\col in {0/{Orden incorrecto: primero GET}/GET/suscribir/falla, -2.3/{Orden correcto: primero suscribir}/suscribir/GET/ws} {
+        \node[font=\small\bfseries, anchor=west, text=\col] at (0,\y+0.75) {\titulo};
+        \draw[flecha, gris] (0,\y) -- (11,\y) node[right, font=\scriptsize]{t};
+        \draw[thick] (1.5,\y-0.12) -- (1.5,\y+0.12) node[above, font=\scriptsize]{\cod{\a}};
+        \draw[thick] (7.5,\y-0.12) -- (7.5,\y+0.12) node[above, font=\scriptsize]{\cod{\b}};
+        \fill[kafka] (4.5,\y) circle (3pt) node[below=2pt, font=\scriptsize, text=kafka]{llega \cod{LISTO}};
+    }
+    \node[font=\scriptsize, text=falla, align=left, anchor=west] at (8.3,-0.45) {el GET ya pasó y aún no\\había suscripción: se pierde};
+    \node[font=\scriptsize, text=ws, align=left, anchor=west] at (8.3,-2.75) {ya estaba suscrito: llega por\\push, y lo anterior viene en el GET};
+\end{tikzpicture}
+\caption{Por qué el cliente se suscribe antes de consultar. Así todo cambio llega por una de las dos vías. Si la conexión se cae, el cliente reintenta cada 3 s y repite los dos pasos.}
+\label{fig:orden}
+\end{figure}
+
+Descartamos el polling con \cod{GET} cada pocos segundos porque genera tráfico aunque el pedido no cambie y avisa con retraso, Server-Sent Events porque es de un solo sentido, y gRPC streaming porque no funciona directo en el navegador.
+
+\subsection{Semánticas de entrega}
+
+Las tres operaciones con efectos, que son crear el pedido, pagar y entregar, se pueden repetir por un reintento. El sistema combina dos semánticas del Capítulo 2 para que el efecto ocurra una sola vez \parencite{tanenbaum2017distributed,coulouris2012distributed}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.3cm and 1.3cm]
+    \node[caja, fill=rest!10, minimum width=3.3cm] (c) {\textbf{Cliente}\\\scriptsize reintenta si no hay respuesta};
+    \node[caja, fill=grpc!10, right=of c, minimum width=3.3cm, minimum height=1.6cm] (f) {\textbf{Servidor}\\\scriptsize descarta duplicados\\\scriptsize por clave, \cod{idPedido}\\\scriptsize o \cod{idEvento}};
+    \node[caja, fill=ws!15, right=of f, minimum width=2.6cm] (r) {\textbf{Un solo efecto}};
+    \draw[flecha] ([yshift=4mm]c.east) -- ([yshift=4mm]f.west);
+    \draw[flecha] (c.east) -- (f.west);
+    \draw[flecha] ([yshift=-4mm]c.east) -- ([yshift=-4mm]f.west);
+    \draw[flecha] (f) -- (r);
+    \node[nota, below=0.25cm of c] {al menos una vez};
+    \node[nota, below=0.25cm of f] {a lo sumo una vez};
+    \node[nota, below=0.25cm of r] {resultado};
+\end{tikzpicture}
+\caption{El cliente repite, el servidor filtra y el resultado es un solo pedido, un solo pago y una sola entrega.}
+\label{fig:semanticas}
+\end{figure}

@@ -1,0 +1,172 @@
+\documentclass[12pt,a4paper]{article}
+
+% ==========================================
+% IDIOMA Y TIPOGRAFÍA
+% ==========================================
+
+\usepackage[spanish]{babel}
+\usepackage{fontspec}
+\setmainfont{Arial}
+\setmonofont{Menlo}[Scale=0.85]
+
+% ==========================================
+% MÁRGENES Y ESPACIADO
+% ==========================================
+
+\usepackage[
+    top=2.5cm,
+    bottom=2.5cm,
+    left=2.5cm,
+    right=2.5cm
+]{geometry}
+
+\usepackage{setspace}
+\setstretch{1.15}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+% ==========================================
+% MATEMÁTICAS
+% ==========================================
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+
+% ==========================================
+% IMÁGENES Y GRÁFICOS
+% ==========================================
+
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{tikz}
+\usepackage{pgfplots}
+
+\pgfplotsset{
+    compat=1.18,
+    every axis/.append style={
+        /pgf/number format/assume math mode=true,
+        /pgf/number format/use comma,
+        /pgf/number format/1000 sep={}
+    }
+}
+\graphicspath{{images/}}
+
+\usetikzlibrary{
+    arrows.meta,
+    positioning,
+    shapes.geometric,
+    fit,
+    backgrounds,
+    calc
+}
+
+% Colores de cada mecanismo, iguales en todo el documento
+\definecolor{rest}{HTML}{1565C0}
+\definecolor{kafka}{HTML}{6A1B9A}
+\definecolor{grpc}{HTML}{EF6C00}
+\definecolor{ws}{HTML}{2E7D32}
+\definecolor{falla}{HTML}{C62828}
+\definecolor{gris}{HTML}{616161}
+\definecolor{fondo}{HTML}{F5F5F5}
+
+\tikzset{
+    flecha/.style={-{Stealth[length=2.2mm]}, thick},
+    caja/.style={draw, rounded corners=2pt, fill=white, align=center,
+        font=\small, inner sep=4pt, minimum height=0.9cm},
+    servicio/.style={caja, minimum width=2.6cm},
+    actor/.style={caja, fill=fondo, minimum width=2.6cm},
+    topico/.style={draw, cylinder, shape border rotate=90, aspect=0.18,
+        fill=kafka!10, draw=kafka, align=center, font=\small,
+        minimum height=1.3cm, minimum width=2.6cm},
+    estado/.style={draw, rounded corners=6pt, fill=white, align=center,
+        font=\footnotesize\ttfamily, inner sep=4pt, minimum height=0.75cm},
+    nota/.style={font=\footnotesize, text=gris, align=center}
+}
+
+% ==========================================
+% TABLAS
+% ==========================================
+
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{caption}
+
+\renewcommand{\arraystretch}{1.2}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\captionsetup{
+    font=small,
+    labelfont=bf
+}
+\captionsetup[table]{position=bottom}
+
+% Texto en monoespaciado para nombres de código
+\newcommand{\cod}[1]{\texttt{#1}}
+
+% ==========================================
+% BIBLIOGRAFÍA - APA 7
+% ==========================================
+
+\usepackage{csquotes}
+
+\usepackage[
+    backend=biber,
+    style=apa
+]{biblatex}
+
+\addbibresource{referencias.bib}
+\appto{\bibsetup}{\raggedright}
+
+% ==========================================
+% CONFIGURACIÓN GENERAL
+% ==========================================
+
+\usepackage[hidelinks]{hyperref}
+
+\pagestyle{empty}
+
+% ==========================================
+% INICIO DEL DOCUMENTO
+% ==========================================
+
+\begin{document}
+
+% ==========================================
+% PORTADA
+% ==========================================
+
+\hypersetup{pageanchor=false}
+\input{portada}
+\hypersetup{pageanchor=true}
+
+% ==========================================
+% ÍNDICE
+% ==========================================
+
+\pagestyle{plain}
+\setcounter{page}{1}
+
+{\setstretch{1.0}\tableofcontents}
+\clearpage
+
+% ==========================================
+% CONTENIDO PRINCIPAL
+% ==========================================
+
+\input{contenido/introduccion}
+\input{contenido/arquitectura}
+\input{contenido/mecanismos}
+\input{contenido/pruebas}
+\input{contenido/conclusiones}
+
+% ==========================================
+% REFERENCIAS BIBLIOGRÁFICAS
+% ==========================================
+
+\printbibliography[title={Referencias}]
+
+\end{document}

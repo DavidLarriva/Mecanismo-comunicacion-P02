@@ -1,5 +1,7 @@
 # [IA]
 # Revisado por: Carolina Fortmann
+from kafka.errors import KafkaConnectionError
+
 from ..consumer_base import ConsumerBase
 from ..eventos import crear_evento_estado, crear_evento_pedido_creado
 from .fakes import FakeConsumer, FakeEventProducer, FakeRecord, pedido_api
@@ -99,3 +101,23 @@ def test_bucle_run_procesa_y_cierra():
     cons.poll = poll
     s.run()
     assert s.llamadas == 2 and cons.commits == [1, 2] and cons.cerrado
+
+
+def test_si_kafka_se_cae_durante_poll_se_reconecta():
+    s, _, primero = armar()
+    def poll_falla(timeout_ms=0):
+        raise KafkaConnectionError("broker caído")
+    primero.poll = poll_falla
+    segundo = FakeConsumer([rec("a", 0)])
+    original = segundo.poll
+    def poll(timeout_ms=0):
+        r = original(timeout_ms)
+        if not r:
+            s.detener()
+        return r
+    segundo.poll = poll
+    s._crear_consumer = lambda: segundo
+    s._parar.wait = lambda segundos: None
+    s.run()
+    assert primero.cerrado and segundo.cerrado
+    assert s.llamadas == 1 and segundo.commits == [1]

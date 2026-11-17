@@ -1,0 +1,230 @@
+\section{Arquitectura}
+
+Antes de programar definimos la arquitectura con una versión corta de la metodología de la Práctica 01. Tiene tres partes, el diagrama de contexto, los escenarios de calidad priorizados y el mapa de microservicios.
+
+\subsection{Diagrama de contexto (C4 nivel 1)}
+
+El diagrama de contexto muestra quién usa CampusBite y con qué se comunica, sin entrar en cómo está construido por dentro. Hay tres actores y ningún sistema externo.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+    \node[draw=rest!70!black, fill=rest!85!black, text=white, rounded corners=3pt,
+          align=center, minimum width=6.8cm, minimum height=2cm, font=\small] (cb) at (0,0)
+          {\textbf{CampusBite}\\[2pt]\footnotesize Recibe pedidos, los reparte a cocina, caja y\\[-2pt]\footnotesize facturación, avisa al estudiante y calcula ventas};
+    \node[draw, fill=rest!15, rounded corners=3pt, align=center, font=\small,
+          minimum width=3.6cm, minimum height=1.3cm] (est) at (-5,3.4)
+          {\textbf{Estudiante}\\\footnotesize pide desde web o celular};
+    \node[draw, fill=rest!15, rounded corners=3pt, align=center, font=\small,
+          minimum width=3.6cm, minimum height=1.3cm] (caj) at (5,3.4)
+          {\textbf{Cajero}\\\footnotesize cobra y entrega};
+    \node[draw, fill=rest!15, rounded corners=3pt, align=center, font=\small,
+          minimum width=3.6cm, minimum height=1.3cm] (adm) at (0,-3.4)
+          {\textbf{Administración}\\\footnotesize revisa las ventas};
+
+    \draw[flecha, rest] ([xshift=-10mm]est.south) |- node[pos=0.25, left, font=\scriptsize, align=right]{crea y consulta\\pedidos\\REST} ([yshift=4mm]cb.west);
+    \draw[flecha, ws, dashed] ([xshift=-18mm]cb.north) |- node[pos=0.25, right, font=\scriptsize, align=left]{avisa cambios\\WebSocket} (est.east);
+    \draw[flecha, rest] (caj.south) |- node[pos=0.25, right, font=\scriptsize, align=left]{registra pago\\y entrega\\REST} (cb.east);
+    \draw[flecha, rest] (adm.north) -- node[right, font=\scriptsize]{consulta estadísticas, REST} (cb.south);
+\end{tikzpicture}
+\caption{Diagrama de contexto C4 nivel 1. Kafka y gRPC no aparecen porque son internos y se ven en el mapa de microservicios.}
+\label{fig:c4}
+\end{figure}
+
+\subsection{Escenarios de calidad}
+
+Definimos seis escenarios con el formato de la Práctica 01, que tiene fuente, estímulo, artefacto, entorno, respuesta y medida. Para priorizarlos calificamos la importancia para la cafetería y la dificultad técnica, como en un árbol de utilidad. Los que tienen las dos altas son los que justifican los mecanismos elegidos (Figura~\ref{fig:prioridad}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[esc/.style={circle, draw=rest, fill=rest!20, minimum size=0.62cm, inner sep=0pt, font=\small\bfseries}]
+\begin{axis}[
+    width=9cm, height=7cm,
+    xmin=0.5, xmax=3.5, ymin=0.5, ymax=3.5,
+    xtick={1,2,3}, xticklabels={Baja, Media, Alta},
+    ytick={1,2,3}, yticklabels={Baja, Media, Alta},
+    xlabel={Dificultad técnica}, ylabel={Importancia para la cafetería},
+    tick label style={font=\small}, label style={font=\small},
+    grid=major, grid style={gris!25},
+]
+    \fill[falla!8] (axis cs:2.5,2.5) rectangle (axis cs:3.5,3.5);
+    \node[font=\scriptsize, text=falla] at (axis cs:3,3.38) {prioridad máxima};
+    \node[esc] at (axis cs:2.82,3) {1};
+    \node[esc] at (axis cs:3.18,3) {2};
+    \node[esc] at (axis cs:2,3) {3};
+    \node[esc] at (axis cs:1.82,2) {4};
+    \node[esc] at (axis cs:2.18,2) {5};
+    \node[esc] at (axis cs:1,2) {6};
+\end{axis}
+\end{tikzpicture}
+\caption{Priorización de los seis escenarios, numerados como en el Cuadro~\ref{tab:escenarios}. Arriba a la derecha están los que, si fallan, hacen que el sistema mienta o cobre dos veces.}
+\label{fig:prioridad}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}c l Y l l@{}}
+\toprule
+\textbf{\#} & \textbf{Atributo} & \textbf{Estímulo y medida} & \textbf{Mecanismo} & \textbf{Prueba} \\
+\midrule
+1 & Disponibilidad & Kafka caído al crear un pedido. Responder \cod{503} en $\le$ 5 s y nunca \cod{201} sin evento & REST + Kafka & REST, parte 2 \\
+2 & Confiabilidad & El cliente reintenta el mismo pedido. Un solo evento por clave & REST & REST, parte 1 \\
+3 & Resiliencia & Caja no responde a Facturación. Cada llamada $\le$ 2 s, máximo 6 intentos & gRPC & gRPC \\
+4 & Rendimiento & Pedidos con consumidores detenidos. La API responde igual y no se pierde ningún evento & Kafka & Kafka \\
+5 & Recuperación & El estudiante pierde el WebSocket. Reintento cada 3 s y estado correcto al volver & WebSocket + REST & WebSocket \\
+6 & Interoperabilidad & Evento que no cumple el contrato. 0 estados dañados & Kafka + contrato & Automáticas \\
+\bottomrule
+\end{tabularx}
+\caption{Escenarios de calidad priorizados, con su medida y la prueba que los verifica.}
+\label{tab:escenarios}
+\end{table}
+
+\subsection{Mapa de microservicios}
+
+CampusBite sigue una arquitectura de microservicios \parencite{richardson2018microservices} con seis servicios. Cada uno guarda sus datos en memoria y es dueño de una parte del estado del pedido. Ningún servicio cambia los datos de otro, solo publica eventos o llama a su interfaz. La Figura~\ref{fig:mapa} muestra cada comunicación con su mecanismo y si es síncrona o asíncrona.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.95, transform shape]
+    % Actores
+    \node[actor, minimum width=2.4cm] (cli) at (0,0) {Estudiante};
+    \node[actor, minimum width=2.4cm] (caj) at (0,-2.2) {Cajero};
+    \node[actor, minimum width=2.4cm] (adm) at (0,-4.4) {Administración};
+
+    % Servicios del lado del cliente
+    \node[servicio] (ws) at (4.2,0) {Notificaciones\\\scriptsize WebSocket :8765};
+    \node[servicio] (api) at (4.2,-2.2) {API de Pedidos\\\scriptsize REST :8000};
+    \node[servicio] (est) at (4.2,-4.4) {Estadísticas\\\scriptsize REST :8002};
+
+    % Kafka en el centro
+    \node[draw=kafka, fill=kafka!8, rounded corners=4pt, minimum width=1.6cm,
+          minimum height=5.6cm, align=center, font=\small, text=kafka] (bus) at (7.6,-2.2)
+          {\textbf{Kafka}\\\scriptsize :9092\\[8pt]\scriptsize pedido.\\[-3pt]\scriptsize creado\\[6pt]\scriptsize pedido.\\[-3pt]\scriptsize estado};
+
+    % Servicios internos
+    \node[servicio] (fac) at (11,0) {Facturación\\\scriptsize cliente gRPC};
+    \node[servicio] (caja) at (11,-2.2) {Caja\\\scriptsize REST :8001 · gRPC :50051};
+    \node[servicio] (coc) at (11,-4.4) {Cocina};
+
+    % REST
+    \draw[flecha, rest] (cli) -- (api);
+    \draw[flecha, rest] ([yshift=2mm]caj.east) -- ([yshift=2mm]caj.east -| api.west);
+    \draw[flecha, rest] (adm) -- (est);
+    \draw[flecha, rest] ([yshift=-2mm]caj.east) -- (1.75,-2.4) -- (1.75,-5.75) -- (13.2,-5.75) |- (caja.east);
+    % WebSocket
+    \draw[{Stealth[length=2.2mm]}-{Stealth[length=2.2mm]}, thick, ws, dashed] (cli) -- (ws);
+    % gRPC
+    \draw[flecha, grpc, very thick] (fac) -- node[right, font=\scriptsize]{gRPC} (caja);
+    % Kafka
+    \draw[flecha, kafka] ([yshift=1.5mm]api.east) -- ([yshift=1.5mm]api.east -| bus.west);
+    \draw[flecha, kafka] ([yshift=-1.5mm]api.east -| bus.west) -- ([yshift=-1.5mm]api.east);
+    \draw[flecha, kafka] (ws.east -| bus.west) -- (ws.east);
+    \draw[flecha, kafka] (est.east -| bus.west) -- (est.east);
+    \draw[flecha, kafka] (fac.west -| bus.east) -- (fac.west);
+    \draw[flecha, kafka] ([yshift=1.5mm]caja.west -| bus.east) -- ([yshift=1.5mm]caja.west);
+    \draw[flecha, kafka] ([yshift=-1.5mm]caja.west) -- ([yshift=-1.5mm]caja.west -| bus.east);
+    \draw[flecha, kafka] ([yshift=1.5mm]coc.west -| bus.east) -- ([yshift=1.5mm]coc.west);
+    \draw[flecha, kafka] ([yshift=-1.5mm]coc.west) -- ([yshift=-1.5mm]coc.west -| bus.east);
+
+    % Leyenda
+    \matrix[column sep=5pt, font=\scriptsize, anchor=north] at (6.6,-6.2) {
+        \draw[flecha, rest] (0,0) -- (0.7,0); & \node[anchor=west]{REST, síncrono}; &
+        \draw[flecha, kafka] (0,0) -- (0.7,0); & \node[anchor=west]{Kafka, asíncrono}; &
+        \draw[flecha, grpc, very thick] (0,0) -- (0.7,0); & \node[anchor=west]{gRPC, síncrono}; &
+        \draw[thick, ws, dashed] (0,0) -- (0.7,0); & \node[anchor=west]{WebSocket, asíncrono}; \\
+    };
+\end{tikzpicture}
+\caption{Mapa de microservicios. Kafka conecta a todos los servicios por eventos. REST y gRPC son las únicas llamadas directas, y el WebSocket queda abierto entre Notificaciones y el estudiante.}
+\label{fig:mapa}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l c Y l@{}}
+\toprule
+\textbf{Servicio} & \textbf{Puerto} & \textbf{Responsabilidad} & \textbf{Estado que cambia} \\
+\midrule
+API de Pedidos & 8000 & Valida, aplica la idempotencia, calcula el total y publica \cod{pedido.creado} & \cod{RECIBIDO}, \cod{ENTREGADO} \\
+Cocina & no tiene & Prepara el pedido sin esperar el pago & \cod{EN\_PREPARACION}, \cod{LISTO} \\
+Caja & 8001 y 50051 & Registra el cobro, recibe el pago y responde \cod{ConfirmarPago} & \cod{PENDIENTE}, \cod{PAGADO} \\
+Facturación & no tiene & Con \cod{PAGO/PAGADO} confirma con Caja y emite una factura & \cod{FACTURADO} \\
+Notificaciones & 8765 & Reenvía a cada cliente los eventos de su pedido & ninguno \\
+Estadísticas & 8002 & Cuenta pedidos, pagos, entregas y ventas & ninguno \\
+\bottomrule
+\end{tabularx}
+\caption{Servicios, puertos y dueño de cada estado. Cada estado tiene un solo dueño, así se sabe quién hizo cada cambio.}
+\label{tab:servicios}
+\end{table}
+
+\subsection{Flujo de un pedido}
+
+La Figura~\ref{fig:secuencia} sigue un pedido de principio a fin. Las flechas continuas son llamadas síncronas, donde quien llama espera la respuesta, y las de Kafka son eventos que cada servicio procesa a su ritmo.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    yscale=0.66,
+    msg/.style={flecha, font=\scriptsize},
+    lbl/.style={font=\scriptsize, inner sep=1.5pt}
+]
+    \foreach \x/\n in {0/Cliente, 2.3/API, 4.6/Kafka, 6.9/Cocina, 9.2/Caja, 11.5/Facturación, 13.8/Notificac.} {
+        \node[caja, minimum width=1.9cm, minimum height=0.6cm, font=\scriptsize] at (\x,0.7) {\n};
+        \draw[gris!50, dashed] (\x,0) -- (\x,-16);
+    }
+    \draw[msg, rest] (0,-0.6) -- node[lbl, above]{1. POST /pedidos} (2.3,-0.6);
+    \draw[msg, kafka] (2.3,-1.5) -- node[lbl, above]{2. pedido.creado} (4.6,-1.5);
+    \draw[msg, rest, dashed] (2.3,-2.3) -- node[lbl, above]{201} (0,-2.3);
+    \draw[msg, ws, dashed] (0,-3.2) -- node[lbl, above, pos=0.5]{3. suscribir por WebSocket y después GET} (13.8,-3.2);
+    \draw[msg, kafka] (4.6,-4.1) -- node[lbl, above]{4. lee} (6.9,-4.1);
+    \draw[msg, kafka] (4.6,-4.9) -- node[lbl, above, pos=0.75]{4. lee} (9.2,-4.9);
+    \draw[msg, kafka] (9.2,-5.8) -- node[lbl, above, pos=0.3]{PENDIENTE} (4.6,-5.8);
+    \draw[msg, kafka] (6.9,-6.7) -- node[lbl, above]{5. EN\_PREPARACION} (4.6,-6.7);
+    \draw[msg, kafka] (4.6,-7.6) -- node[lbl, above, pos=0.8]{reenvío} (13.8,-7.6);
+    \draw[msg, ws] (13.8,-8.5) -- node[lbl, above, pos=0.5]{push al estudiante} (0,-8.5);
+    \draw[msg, rest] (0,-9.5) -- node[lbl, above, pos=0.55]{6. el cajero cobra: POST /caja/pagos} (9.2,-9.5);
+    \draw[msg, kafka] (9.2,-10.4) -- node[lbl, above, pos=0.4]{PAGADO} (4.6,-10.4);
+    \draw[msg, kafka] (4.6,-11.3) -- node[lbl, above, pos=0.8]{7. lee PAGADO} (11.5,-11.3);
+    \draw[msg, grpc, very thick] (11.5,-12.2) -- node[lbl, above]{ConfirmarPago} (9.2,-12.2);
+    \draw[msg, grpc, dashed] (9.2,-13.0) -- node[lbl, above]{PAGADO} (11.5,-13.0);
+    \draw[msg, kafka] (11.5,-13.9) -- node[lbl, above, pos=0.2]{FACTURADO} (4.6,-13.9);
+    \draw[msg, kafka] (6.9,-14.8) -- node[lbl, above]{8. LISTO} (4.6,-14.8);
+    \draw[msg, rest] (0,-15.7) -- node[lbl, above]{9. entregar} (2.3,-15.7);
+    \draw[msg, kafka] (2.3,-15.7) -- node[lbl, above]{ENTREGADO} (4.6,-15.7);
+\end{tikzpicture}
+\caption{Secuencia de un pedido. Cada cambio de estado pasa por \cod{pedido.estado} y llega por WebSocket al estudiante, como en el paso 5. Para no saturar el diagrama solo se dibuja ese reenvío una vez.}
+\label{fig:secuencia}
+\end{figure}
+
+\subsection{Estados del pedido}
+
+El estado tiene cuatro partes independientes y cada una tiene un solo servicio con autoridad para cambiarla. Un estado nunca retrocede, y si llega un evento con una combinación que no está en el contrato se ignora.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+    \node[font=\small\bfseries, text=gris, anchor=west] at (-0.2,0.8) {Preparación};
+    \node[estado] (r) at (0.8,0) {RECIBIDO};
+    \node[estado] (p) at (4.2,0) {EN\_PREPARACION};
+    \node[estado] (l) at (7.6,0) {LISTO};
+    \node[estado, fill=ws!15] (en) at (11.6,0) {ENTREGADO};
+    \draw[flecha] (r) -- node[above, font=\scriptsize]{Cocina} (p);
+    \draw[flecha] (p) -- node[above, font=\scriptsize]{Cocina} (l);
+    \draw[flecha] (l) -- node[above, font=\scriptsize]{API} (en);
+
+    \node[font=\small\bfseries, text=gris, anchor=west] at (-0.2,-1.8) {Pago y facturación};
+    \node[estado] (pe) at (0.8,-2.6) {PENDIENTE};
+    \node[estado] (pa) at (4.2,-2.6) {PAGADO};
+    \node[estado] (fa) at (9.2,-2.0) {FACTURADO};
+    \node[estado] (fp) at (9.2,-3.3) {FACTURACION\_PENDIENTE};
+    \draw[flecha] (pe) -- node[above, font=\scriptsize]{Caja} (pa);
+    \draw[flecha] (pa.east) -- node[above, font=\scriptsize, pos=0.35, sloped]{confirma} (fa.west);
+    \draw[flecha] (pa.east) -- node[below, font=\scriptsize, pos=0.35, sloped]{6 fallos} (fp.west);
+
+    \draw[flecha, dashed, gris] (pa.north) -- (4.2,-1.0) -| node[pos=0.25, above, font=\scriptsize]{la entrega también exige PAGADO} (en.south);
+    \node[font=\scriptsize, text=gris, anchor=west] at (2.2,-1.8) {};
+\end{tikzpicture}
+\caption{Estados del pedido. La preparación la cambia Cocina (la API solo pone \cod{RECIBIDO}), el pago lo cambia Caja, la facturación la cambia Facturación y la entrega la API, que solo la acepta con el pedido \cod{LISTO} y \cod{PAGADO}. \cod{FACTURACION\_PENDIENTE} es final en esta versión.}
+\label{fig:estados}
+\end{figure}

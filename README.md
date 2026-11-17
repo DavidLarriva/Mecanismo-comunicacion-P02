@@ -15,6 +15,8 @@ Con CampusBite los estudiantes hacen sus pedidos desde la web o el celular. Cada
 
 La consigna pide REST y dos mecanismos más, y nosotros implementamos cuatro. Por qué elegimos estos se explica en `docs/adr/ADR-005-seleccion.md`.
 
+Además preparamos un informe general del proyecto, con la arquitectura, los mecanismos y los resultados de las pruebas, en `docs/informe/informe-campusbite.pdf`.
+
 ## Estructura
 
 | Carpeta | Contenido |
@@ -34,6 +36,7 @@ La consigna pide REST y dos mecanismos más, y nosotros implementamos cuatro. Po
 | `docs/adr/` | Decisiones de arquitectura |
 | `docs/pruebas/` | Pruebas de comportamiento con resultados reales y sus evidencias |
 | `docs/bitacora-ia.md` | Bitácora de uso de IA |
+| `docs/informe/` | Informe general en PDF y su código LaTeX |
 
 ## Requisitos
 

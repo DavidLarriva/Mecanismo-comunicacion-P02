@@ -1,0 +1,321 @@
+\section{Pruebas de comportamiento}
+
+Hicimos una prueba por mecanismo ante una falla o una situación límite, más una prueba de integración con los seis servicios. Todas se ejecutaron con Kafka real en Docker y los resultados son los que obtuvimos. El Cuadro~\ref{tab:pruebas} resume lo que se probó y la sección de cada prueba muestra los datos.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l c Y Y@{}}
+\toprule
+\textbf{Prueba} & \textbf{Escenario} & \textbf{Falla provocada} & \textbf{Resultado} \\
+\midrule
+REST, parte 1 & 2 & El mismo pedido enviado varias veces y a la vez & 7 solicitudes, 2 pedidos y 2 eventos \\
+REST, parte 2 & 1 & Kafka detenido al crear un pedido & \cod{503} en 5,00 s y reintento con el mismo \cod{idPedido} \\
+Kafka & 4 & Cocina detenida mientras llega un pedido & Cocina lo procesó al volver, sin perderlo \\
+gRPC & 3 & Caja sin responder & Llamada cortada en 2,02 s con \cod{DEADLINE\_EXCEEDED} \\
+WebSocket & 5 & El estudiante se desconecta antes de \cod{LISTO} & Recuperó \cod{LISTO} por REST y recibió \cod{ENTREGADO} por push \\
+Integración & 6 & Pago y entrega repetidos en el flujo completo & 7 eventos en orden y un solo pago, factura y entrega \\
+\bottomrule
+\end{tabularx}
+\caption{Resumen de las pruebas. Todas cumplieron la medida de su escenario.}
+\label{tab:pruebas}
+\end{table}
+
+\subsection{REST: pedido duplicado y Kafka caído}
+
+\textbf{Parte 1.} Un script envió el mismo pedido dos veces, cinco solicitudes simultáneas con la misma clave, una clave reutilizada con otro pedido y una solicitud sin clave. Al final leyó \cod{pedido.creado} desde el inicio para contar los eventos, que es lo que ven cocina, caja y estadísticas.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=6.4cm, height=5.6cm,
+    ybar, bar width=0.6cm,
+    ymin=0, ymax=8.5,
+    symbolic x coords={Solicitudes, Pedidos, Eventos},
+    xtick=data, enlarge x limits=0.25,
+    xticklabel style={font=\scriptsize},
+    nodes near coords, nodes near coords style={font=\small\bfseries},
+    tick label style={font=\small}, ytick=\empty, axis x line*=bottom, axis y line=none,
+    title={\small Lo enviado frente a lo creado},
+]
+    \addplot[fill=rest!70, draw=rest] coordinates {(Solicitudes,7) (Pedidos,2) (Eventos,2)};
+\end{axis}
+\end{tikzpicture}
+\hfill
+\begin{tikzpicture}
+\begin{axis}[
+    width=8.4cm, height=5.6cm,
+    xbar stacked, bar width=0.55cm,
+    xmin=0, xmax=5,
+    symbolic y coords={Ejecución anterior, Ejecuciones 1 a 3},
+    ytick=data, enlarge y limits=0.5,
+    tick label style={font=\scriptsize}, xtick={0,1,...,5},
+    xlabel={\scriptsize solicitudes simultáneas},
+    legend style={font=\scriptsize, at={(0.5,1.03)}, anchor=south, legend columns=3, draw=none},
+    title={\small 5 envíos a la vez con la misma clave}, title style={yshift=4mm},
+]
+    \addplot[fill=ws!60, draw=ws] coordinates {(1,Ejecuciones 1 a 3) (1,Ejecución anterior)};
+    \addplot[fill=rest!40, draw=rest] coordinates {(0,Ejecuciones 1 a 3) (3,Ejecución anterior)};
+    \addplot[fill=grpc!50, draw=grpc] coordinates {(4,Ejecuciones 1 a 3) (1,Ejecución anterior)};
+    \legend{\cod{201} creado, \cod{200} reintento, \cod{409} en curso}
+\end{axis}
+\end{tikzpicture}
+\caption{Resultados de la parte 1. A la izquierda, siete solicitudes con dos claves dejaron dos pedidos y dos eventos. A la derecha, el reparto de respuestas cambia según cuándo llega cada solicitud, pero siempre hay un solo \cod{201}.}
+\label{fig:rest1}
+\end{figure}
+
+El reparto distinto entre ejecuciones no es un error. Las solicitudes que llegan mientras la primera espera la confirmación de Kafka, unos 4 ms, reciben \cod{409}, y las que llegan después reciben \cod{200} con la respuesta guardada. La clave reutilizada con otro pedido recibió \cod{409 CLAVE\_REUTILIZADA} y la solicitud sin clave \cod{400 FALTA\_IDEMPOTENCY\_KEY}.
+
+\textbf{Parte 2.} Detuvimos Kafka con \cod{docker stop kafka}, enviamos dos veces el mismo pedido, volvimos a levantar Kafka y reintentamos. La Figura~\ref{fig:tiempos} compara los tiempos de respuesta de las dos partes en escala logarítmica.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=12.2cm, height=7cm,
+    xbar, bar width=0.38cm,
+    xmode=log, log basis x=10,
+    xmin=0.5, xmax=40000,
+    xtick={1,10,100,1000,10000}, xticklabels={1, 10, 100, 1000, 10000},
+    xlabel={\small tiempo de respuesta en ms (escala logarítmica)},
+    symbolic y coords={
+        {503, Kafka caído},
+        {201, reintento con Kafka de vuelta},
+        {201, primer pedido},
+        {201, pedidos siguientes},
+        {409, otra igual en curso},
+        {200 GET /menu, Kafka caído},
+        {200, reintento},
+    },
+    ytick=data, y dir=reverse,
+    tick label style={font=\scriptsize},
+    nodes near coords, nodes near coords style={font=\scriptsize, anchor=west},
+    point meta=explicit symbolic,
+    enlarge y limits=0.13,
+]
+    \addplot[fill=rest!60, draw=rest] coordinates {
+        (132,{201, primer pedido}) [132 ms]
+        (5,{201, pedidos siguientes}) [5 ms]
+        (1,{200, reintento}) [1 ms]
+        (25,{201, reintento con Kafka de vuelta}) [25 ms]
+        (1.3,{409, otra igual en curso}) [1,3 ms]
+        (1.2,{200 GET /menu, Kafka caído}) [1,2 ms]
+    };
+    \addplot[fill=falla!55, draw=falla] coordinates {
+        (5000,{503, Kafka caído}) [5000 ms]
+    };
+\end{axis}
+\end{tikzpicture}
+\caption{Tiempos de respuesta medidos. Con Kafka caído la API espera los 5 s de su límite antes de responder \cod{503}, pero las demás rutas siguen respondiendo en un milisegundo. Los \cod{201} con cocina, caja y facturación detenidas muestran que la API no espera a ningún servicio interno.}
+\label{fig:tiempos}
+\end{figure}
+
+El intento fallido y el reintento usaron el mismo \cod{idPedido}, que empieza con \cod{52a1efde}, y en \cod{pedido.creado} quedó un solo evento. Esto importa porque un \cod{503} no prueba que Kafka no haya escrito el mensaje, solo que no llegó la confirmación. Si el reintento generara otro \cod{idPedido}, los consumidores verían dos pedidos distintos.
+
+\subsection{Kafka: consumidor detenido}
+
+Con Kafka y la API funcionando detuvimos Cocina, creamos un pedido desde Swagger y volvimos a levantar Cocina. La Figura~\ref{fig:kafka} muestra la línea de tiempo con las horas del log.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=0.075cm, y=1cm]
+    % eje de 20:32:30 (0) a 20:35:30 (180 s)
+    \fill[falla!10] (0,-0.35) rectangle (159,0.35);
+    \node[font=\scriptsize, text=falla] at (60,0.55) {Cocina detenida};
+    \fill[ws!15] (159,-0.35) rectangle (180,0.35);
+    \node[font=\scriptsize, text=ws, anchor=south] at (170,0.35) {Cocina activa};
+    \draw[flecha, gris] (0,-0.35) -- (185,-0.35);
+    \foreach \t/\lab in {0/20:32:30, 60/20:33:30, 120/20:34:30, 180/20:35:30} {
+        \draw[gris] (\t,-0.3) -- (\t,-0.4) node[below, font=\tiny]{\lab};
+    }
+    \fill[rest] (19,0) circle (3pt);
+    \node[font=\scriptsize, text=rest, align=center, above] at (19,0.1) {\cod{201}\\pedido creado};
+    \fill[kafka] (159,0) circle (3pt);
+    \fill[kafka] (164,0) circle (3pt);
+    \node[font=\scriptsize, text=kafka, align=left, anchor=north east] at (162,-0.75) {offset 8: \cod{EN\_PREPARACION}\\offset 9: \cod{LISTO}};
+\end{tikzpicture}
+\caption{Prueba de Kafka. El pedido \cod{3742ad17-...} se creó a las 20:32:49 con Cocina detenida. Al volver, Cocina publicó \cod{EN\_PREPARACION} a las 20:35:09 y \cod{LISTO} a las 20:35:14, los dos en la partición 0. El pedido esperó más de dos minutos en Kafka y no se perdió.}
+\label{fig:kafka}
+\end{figure}
+
+El pedido no se perdió porque Kafka guarda para cada consumer group el offset hasta el que ya procesó, y Cocina hace el commit recién después de procesar. Al reiniciar continuó desde su último offset confirmado. Es el desacoplamiento temporal del Capítulo 2, donde productor y consumidor no necesitan estar activos al mismo tiempo \parencite{timbi2026comunicacion}.
+
+\subsection{gRPC: Caja sin responder}
+
+Domenica probó cuatro casos. En el primero llamó a un puerto sin servidor gRPC, y la llamada terminó en 2,02 s con \cod{DEADLINE\_EXCEEDED} en lugar de bloquear a Facturación (Figura~\ref{fig:deadline}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=10cm, height=3.6cm,
+    xbar, bar width=0.4cm,
+    xmin=0, xmax=2.6,
+    symbolic y coords={observado, deadline},
+    ytick=data, tick label style={font=\small},
+    xlabel={\small segundos},
+    nodes near coords, nodes near coords style={font=\scriptsize, anchor=west},
+    point meta=explicit symbolic,
+    enlarge y limits=0.5,
+]
+    \addplot[fill=grpc!60, draw=grpc] coordinates {(2.00,deadline) [2,00 s] (2.02,observado) [2,02 s]};
+\end{axis}
+\end{tikzpicture}
+\caption{Duración de la llamada gRPC sin servidor. Termina prácticamente en el deadline configurado.}
+\label{fig:deadline}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}c Y Y@{}}
+\toprule
+\textbf{\#} & \textbf{Caso} & \textbf{Resultado} \\
+\midrule
+1 & Llamada a un puerto sin servidor & \cod{DEADLINE\_EXCEEDED} en 2,02 s \\
+2 & Pago confirmado y facturación & \cod{PAGADO} con \cod{PAG-3F40D3BBC3CA}, luego \cod{FACTURADO} con \cod{FAC-04CAAF4A013D} \\
+3 & Pago y confirmación repetidos & La misma \cod{PAG-3F40D3BBC3CA}, \cod{repetida = true} y un solo \cod{PAGO/PAGADO} en Kafka \\
+4 & Pago tardío, después de los 6 intentos & Con el diseño anterior quedó \cod{FACTURACION\_PENDIENTE}. Con el nuevo, Facturación leyó el \cod{PAGADO} guardado en Kafka y emitió \cod{FAC-6242528FFF56} \\
+\bottomrule
+\end{tabularx}
+\caption{Casos de la prueba de gRPC. El caso 4 fue un resultado inesperado que nos llevó a la versión 1.3 del contrato (Figura~\ref{fig:v13}).}
+\label{tab:grpc}
+\end{table}
+
+\subsection{WebSocket: cliente desconectado}
+
+Cinthya probó que un estudiante que pierde la conexión no pierde el estado de su pedido. El cliente creó un pedido, se desconectó antes de que Cocina terminara y volvió quince segundos después.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=0.52cm, y=1cm]
+    \fill[ws!15] (0,-0.3) rectangle (2.5,0.3);
+    \fill[falla!10] (2.5,-0.3) rectangle (17.5,0.3);
+    \fill[ws!15] (17.5,-0.3) rectangle (27,0.3);
+    \node[font=\scriptsize, text=ws] at (1.25,0) {conectado};
+    \node[font=\scriptsize, text=falla] at (10,0) {desconectado 15 s};
+    \node[font=\scriptsize, text=ws] at (23.5,0) {conectado};
+    \draw[flecha, gris] (0,-0.3) -- (27.8,-0.3) node[right, font=\scriptsize]{s};
+    \foreach \t in {0,5,10,15,20,25} {\draw[gris] (\t,-0.25) -- (\t,-0.35) node[below, font=\tiny]{\t};}
+
+    \foreach \t/\y/\txt/\col in {
+        0.3/2.15/{\cod{POST} 201 y WebSocket abierto}/rest,
+        0.5/1.45/{suscribir, luego \cod{GET}: \cod{EN\_PREPARACION}}/ws,
+        2.5/0.75/{el cliente se desconecta}/falla,
+        17.5/2.15/{vuelve y se suscribe}/ws,
+        17.7/1.45/{\cod{GET}: \cod{LISTO}}/rest,
+        20.5/0.75/{push \cod{ENTREGADO}}/ws} {
+        \draw[\col] (\t,0.3) -- (\t,\y);
+        \node[font=\scriptsize, text=\col, anchor=west, inner sep=1.5pt] at (\t,\y) {\txt};
+    }
+    \node[font=\scriptsize, text=kafka, align=center] at (10,-1.05) {mientras tanto Cocina publica \cod{LISTO}\\y Notificaciones descarta el aviso};
+\end{tikzpicture}
+\caption{Línea de tiempo real de la prueba de WebSocket. El estado perdido durante la desconexión se recuperó con \cod{GET} y el evento siguiente llegó por push.}
+\label{fig:ws}
+\end{figure}
+
+El WebSocket es comunicación transitoria, así que el aviso de \cod{LISTO} se descartó porque nadie estaba conectado. Lo que no se perdió fue el estado, porque Kafka es persistente, la API consumió el evento y lo devolvió por REST. Combinar las dos vías da inmediatez cuando hay conexión y consistencia cuando no la hay.
+
+\subsection{Integración: flujo completo}
+
+Con Kafka y los seis servicios levantados, un script hizo lo mismo que el estudiante y el cajero. Creó un pedido de 450 centavos, se suscribió, intentó entregarlo antes de tiempo, lo pagó dos veces, intentó pagar un pedido inexistente y lo entregó dos veces. La Figura~\ref{fig:integracion} ubica cada paso en el tiempo y en su mecanismo.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    xscale=0.95,
+    celda/.style={font=\scriptsize, align=center, inner sep=2pt},
+    pto/.style={circle, inner sep=0pt, minimum size=5pt}
+]
+    \foreach \y/\m/\col in {3/REST/rest, 2/Kafka/kafka, 1/gRPC/grpc, 0/WebSocket/ws} {
+        \node[font=\small\bfseries, text=\col, anchor=east] at (-0.4,\y*1.15) {\m};
+        \draw[\col!30] (-0.2,\y*1.15) -- (13.4,\y*1.15);
+    }
+    \foreach \x/\t in {0.8/{+0,1 s}, 5.0/{+5,1 s}, 7.6/{+5,3 s}, 10.0/{+5,4 s}, 12.4/{+5,5 s}} {
+        \node[font=\scriptsize\bfseries, text=gris] at (\x,4.35) {\t};
+        \draw[gris!40, dashed] (\x,4.1) -- (\x,-0.4);
+    }
+    \draw[decorate, gris] (1.8,4.35) -- (4.0,4.35);
+    \node[font=\scriptsize, text=gris, fill=white] at (2.9,4.35) {Cocina 5 s};
+
+    % REST
+    \node[celda, text=rest, fill=white] at (0.8,3.45) {\cod{201} creado\\\cod{409} no listo};
+    \node[celda, text=falla, fill=white] at (7.6,3.45) {\cod{409}\\no pagado};
+    \node[celda, text=rest, fill=white] at (10.0,3.45) {pago dos veces\\misma confirmación};
+    \node[celda, text=rest, fill=white] at (12.4,3.45) {entrega dos\\veces, \cod{200}};
+    % Kafka
+    \node[celda, text=kafka, fill=white] at (0.8,2.3) {\cod{EN\_PREPARACION}\\\cod{PENDIENTE}};
+    \node[celda, text=kafka, fill=white] at (5.0,2.3) {\cod{LISTO}};
+    \node[celda, text=kafka, fill=white] at (10.0,2.3) {\cod{PAGADO}\\\cod{FACTURADO}};
+    \node[celda, text=kafka, fill=white] at (12.4,2.3) {\cod{ENTREGADO}};
+    % gRPC
+    \node[celda, text=grpc, fill=white] at (10.0,1.15) {\cod{ConfirmarPago}};
+    % WebSocket
+    \node[celda, text=ws, fill=white] at (0.8,0) {suscrito};
+    \node[celda, text=ws, fill=white] at (5.0,0) {push \cod{LISTO}};
+    \node[celda, text=ws, fill=white] at (12.4,0) {6 estados\\recibidos};
+\end{tikzpicture}
+\caption{Línea de tiempo de la prueba de integración, por mecanismo. La API respondió en 0,1 s mientras Cocina tardaba 5 s, y en los 0,4 s siguientes a \cod{LISTO} se completaron el pago, la confirmación por gRPC, la factura y la entrega.}
+\label{fig:integracion}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}l c l l@{}}
+\toprule
+\textbf{Topic} & \textbf{Offset} & \textbf{Evento} & \textbf{Publicado por} \\
+\midrule
+\cod{pedido.creado} & 7 & pedido creado, total 450 & API \\
+\cod{pedido.estado} & 27 & \cod{PREPARACION/EN\_PREPARACION} & Cocina \\
+\cod{pedido.estado} & 28 & \cod{PAGO/PENDIENTE} & Caja \\
+\cod{pedido.estado} & 29 & \cod{PREPARACION/LISTO} & Cocina \\
+\cod{pedido.estado} & 30 & \cod{PAGO/PAGADO} & Caja \\
+\cod{pedido.estado} & 31 & \cod{FACTURACION/FACTURADO} & Facturación \\
+\cod{pedido.estado} & 32 & \cod{ENTREGA/ENTREGADO} & API \\
+\bottomrule
+\end{tabular}
+\caption{Eventos del pedido \cod{0751c38d-...} en Kafka. Los siete quedaron en la partición 0 y en orden, aunque los publicaron cuatro servicios distintos. Pese a pagar y entregar dos veces, hay un solo \cod{PAGADO} y un solo \cod{ENTREGADO}.}
+\label{tab:offsets}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=7.6cm, height=5.4cm,
+    ybar, bar width=0.45cm,
+    ymin=0, ymax=23,
+    symbolic x coords={Recibidos, Pagados, Entregados},
+    xtick=data, enlarge x limits=0.25,
+    nodes near coords, nodes near coords style={font=\scriptsize},
+    tick label style={font=\small},
+    legend style={font=\scriptsize, at={(0.98,0.97)}, anchor=north east, draw=none},
+    ylabel={\small pedidos}, title={\small Contadores de Estadísticas},
+]
+    \addplot[fill=gris!30, draw=gris] coordinates {(Recibidos,18) (Pagados,3) (Entregados,3)};
+    \addplot[fill=kafka!55, draw=kafka] coordinates {(Recibidos,19) (Pagados,4) (Entregados,4)};
+    \legend{antes, después}
+\end{axis}
+\end{tikzpicture}
+\hfill
+\begin{tikzpicture}
+\begin{axis}[
+    width=5.4cm, height=5.4cm,
+    ybar, bar width=0.7cm,
+    ymin=0, ymax=2100,
+    symbolic x coords={antes, después},
+    xtick=data, enlarge x limits=0.5,
+    nodes near coords, nodes near coords style={font=\scriptsize},
+    tick label style={font=\small},
+    ylabel={\small centavos}, title={\small Ventas entregadas},
+]
+    \addplot[fill=kafka!55, draw=kafka] coordinates {(antes,1350) (después,1800)};
+\end{axis}
+\end{tikzpicture}
+\caption{Estadísticas antes y después del pedido de la prueba. Subió en uno cada contador y las ventas aumentaron justo los 450 centavos del pedido, aunque el pago y la entrega se enviaron dos veces.}
+\label{fig:estadisticas}
+\end{figure}
+
+La prueba relaciona varios conceptos del Capítulo 2. REST es síncrono porque el estudiante y el cajero necesitan una respuesta inmediata, mientras que Kafka desacopla a los servicios en el tiempo y en la identidad, porque el productor no sabe quién consume. gRPC se usó en el único punto donde hacía falta una respuesta confirmada, y el WebSocket empujó cada cambio al estudiante. El flujo funcionó sin ajustes porque los cuatro integrantes respetamos el mismo contrato.

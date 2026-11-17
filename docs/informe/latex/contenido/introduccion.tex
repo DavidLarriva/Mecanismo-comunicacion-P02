@@ -1,0 +1,52 @@
+\section{Introducción}
+
+En las horas pico los estudiantes hacen fila para pedir, para pagar y para esperar su comida, y no saben cuándo estará listo su pedido. CampusBite es un sistema distribuido que resuelve este problema para la cafetería del campus. El estudiante pide desde la web o el celular, cada pedido llega a cocina, caja y facturación, el estudiante recibe un aviso cuando su pedido está listo y la administración puede ver las estadísticas de ventas.
+
+La práctica pide usar REST para la API de pedidos y otros mecanismos de comunicación del Capítulo 2, con al menos uno asíncrono y todos dentro del mismo flujo \parencite{timbi2026comunicacion}. Como el grupo tiene cuatro integrantes usamos cuatro mecanismos, uno por persona. La Figura~\ref{fig:resumen} muestra cómo un mismo pedido los recorre.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.6cm and 1.1cm]
+    \node[actor] (est) {Estudiante};
+    \node[servicio, right=1.6cm of est] (api) {API de Pedidos};
+    \node[topico, right=1.6cm of api] (k) {Kafka};
+    \node[servicio, above right=0.2cm and 1.4cm of k] (coc) {Cocina};
+    \node[servicio, right=1.4cm of k] (caja) {Caja};
+    \node[servicio, below right=0.2cm and 1.4cm of k] (fac) {Facturación};
+    \node[servicio, below=1.4cm of api] (ws) {Notificaciones};
+
+    \draw[flecha, rest] (est) -- node[above, font=\scriptsize]{REST} (api);
+    \draw[flecha, kafka] (api) -- node[above, font=\scriptsize]{publica} (k);
+    \draw[flecha, kafka] (k) -- (coc);
+    \draw[flecha, kafka] (k) -- (caja);
+    \draw[flecha, kafka] (k) -- (fac);
+    \draw[flecha, grpc, very thick] (fac.east) -| node[pos=0.25, below, font=\scriptsize]{gRPC} ([xshift=0.5cm]caja.east) -- (caja.east);
+    \draw[flecha, kafka] (k.south) |- (ws.east);
+    \draw[flecha, ws, dashed] (ws.west) -| node[pos=0.25, below, font=\scriptsize]{WebSocket} (est.south);
+\end{tikzpicture}
+\caption{Recorrido de un pedido por los cuatro mecanismos. Cada color es un mecanismo y se usa igual en todo el documento: azul REST, morado Kafka, naranja gRPC y verde WebSocket.}
+\label{fig:resumen}
+\end{figure}
+
+\subsection{Objetivo y alcance}
+
+El objetivo es diseñar e implementar en Python un sistema donde cada mecanismo se use donde tiene sentido técnico, y comprobar con pruebas reales cómo responde ante tres fallas que pide la consigna: un pedido enviado dos veces, un servicio interno que no responde y un cliente que se desconecta.
+
+El sistema tiene seis servicios y guarda los datos en memoria, algo que la consigna permite. Kafka corre en Docker y es lo único que persiste. No hay autenticación ni sistemas externos, porque el pago se hace en el mostrador y el cajero solo lo registra.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l Y@{}}
+\toprule
+\textbf{Integrante} & \textbf{Mecanismo} & \textbf{Servicios a cargo} \\
+\midrule
+David Larriva & REST & API de Pedidos, contrato, schema y arquitectura \\
+Carolina Fortmann & Kafka & Broker, capa común de Kafka, Cocina y Estadísticas \\
+Domenica Uyunkar & gRPC & Caja (REST y servidor gRPC) y Facturación \\
+Cinthya Ramón & WebSocket & Notificaciones, cliente web e integración \\
+\bottomrule
+\end{tabularx}
+\caption{Reparto del trabajo. Cada integrante es dueño de un mecanismo y de sus servicios.}
+\label{tab:equipo}
+\end{table}
