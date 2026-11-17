@@ -2,7 +2,7 @@ import grpc
 
 from contracts.grpc import caja_pb2, caja_pb2_grpc
 
-
+# [IA] Código elaborado con apoyo de ChatGPT y revisado por Domenica Uyunkar.
 class ClienteCaja:
     def __init__(self, destino: str = "localhost:50051") -> None:
         self.canal = grpc.insecure_channel(destino)

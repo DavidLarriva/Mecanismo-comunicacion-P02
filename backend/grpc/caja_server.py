@@ -39,7 +39,7 @@ class ServicioCaja(caja_pb2_grpc.CajaServicer):
             "El pago tiene un estado no reconocido",
         )
 
-
+# [IA] Código elaborado con apoyo de ChatGPT y revisado por Domenica Uyunkar.
 def iniciar_servidor():
     servidor = grpc.server(ThreadPoolExecutor(max_workers=10))
     caja_pb2_grpc.add_CajaServicer_to_server(
