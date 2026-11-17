@@ -1,9 +1,5 @@
 # Bitácora de uso de IA
 
-Marcar en el código los fragmentos con asistencia de IA (p. ej. comentario `# [IA]`).
-
-# Bitácora de uso de IA
-
 Los fragmentos de código desarrollados con asistencia de inteligencia artificial deben identificarse mediante el comentario `# [IA]` o una marca equivalente, según el lenguaje utilizado. Cada archivo debe incluir el nombre de quien realizó su revisión.
 
 | Integrante y fecha | Herramienta | Consulta | Respuesta (resumen) | Acción del grupo | Validación |
@@ -19,6 +15,8 @@ Los fragmentos de código desarrollados con asistencia de inteligencia artificia
 | David / 15-nov-2026 | Claude Code | Guía para redactar el ADR-001, el C4, los escenarios de calidad y el mapa de microservicios | Propuso la estructura y una redacción con los datos medidos en las pruebas | Revisé que cada número coincidiera con las pruebas reales y corregí el mapa, que atribuía la capa Kafka común a servicios que todavía no la usaban | Diagramas Mermaid comprobados al dibujarlos |
 | David / 16-nov-2026 | Claude Code | Guía para el README de la API y el README raíz | Propuso las secciones de requisitos, instalación, ejecución y pruebas | Revisé el contenido y ejecuté cada comando antes de dejarlo | Entorno limpio con `pip check`, pruebas, API, Swagger y Estadísticas funcionando con los comandos documentados |
 | David / 16-nov-2026 | Claude Code | Revisión del código de todo `main` después de integrar a los cuatro integrantes | Ejecutó las 61 pruebas y el flujo completo con los 6 servicios. Detectó que Facturación ya consumía `pedido.estado` y no `pedido.creado` como decía el contrato, y que un merge había borrado entradas de esta bitácora | Decidí adoptar el diseño de Dome en lugar de pedirle que volviera al contrato, porque corrige un error real (un pago tardío dejaba el pedido sin factura). Actualicé el contrato a v1.3, el mapa y el README, y avisé al grupo, incluido lo de las entradas borradas de la bitácora | Flujo completo: un evento de cada tipo en la misma partición y en orden, y los 6 estados recibidos por WebSocket |
+| David / 16-nov-2026 | Claude Code | Ejecutar y documentar la prueba de integración con los seis servicios | Generó `backend/api_rest/pruebas/prueba_flujo_completo.py`, lo ejecutó con Kafka y los seis servicios reales y redactó `docs/pruebas/integracion.md` con los resultados y la explicación con conceptos del capítulo 2 | Revisé que cada dato del documento coincidiera con la salida guardada. La salida mostraba algunos mensajes del WebSocket después de la entrega; se explicó en el documento como un efecto de cómo el script imprime, no como un retraso, porque en Kafka el orden era correcto | Salida real en `docs/pruebas/evidencias/integracion/flujo-completo.txt`: 6 estados por WebSocket y 7 eventos en orden en la partición 0 |
+| David / 16-nov-2026 | Claude Code | Redactar lo que faltaba del grupo: ADR-005, explicación de `prueba-grpc.md` y `prueba-kafka.md`, y limpieza de `config.py`, del stub y de `requirements.txt` | Redactó el ADR-005 a partir de las decisiones ya tomadas por el grupo (contrato, ADR-001 a ADR-004) y de la guía de selección del capítulo 2. Agregó a las pruebas de gRPC y Kafka el escenario relacionado y la explicación con conceptos del capítulo. Comprobó en las capturas de Caro que el pedido de Swagger era el mismo que procesó Cocina | El ADR-005 queda en estado Propuesto hasta que el grupo lo revise y lo apruebe. Los textos de las pruebas de Dome y Caro se agregaron a sus documentos sin cambiar sus resultados, para que cada una los revise | Las 61 pruebas automatizadas siguen pasando después de los cambios en `config.py` y el stub |
 | Caro / 12-nov-2026 | ChatGPT | Analizar la guía del proyecto y la división de actividades entre los cuatro integrantes, identificando las responsabilidades del Integrante 2 y sus dependencias. | Se propuso una planificación para la implementación de Kafka, incluyendo los topics, los consumer groups, la política de reintentos, la DLQ y las dependencias con los demás integrantes. | Se utilizó como orientación inicial para organizar las tareas de la capa Kafka y coordinar las dependencias con los demás servicios. | Se contrastó la propuesta con la guía del proyecto y la práctica 01. |
 | Caro / 12-nov-2026 | Claude | Generar una implementación independiente de la capa de comunicación Kafka. | Se generó una primera versión utilizando `confluent-kafka` y un formato de eventos propio. | Se descartó esta implementación porque no coincidía con el contrato de comunicación establecido por el grupo. | Se comparó el código generado con el contrato documentado en `contratos.md`. |
 | Caro / 12-nov-2026 | Claude | Adaptar la implementación al contrato v1.0 y desarrollar los servicios de Cocina y Estadísticas. | Se propuso una nueva implementación con `kafka-python`, eventos en camelCase, valores monetarios en centavos, un consumidor base y los servicios de Cocina y Estadísticas. | Se tomó como base para adaptar la capa Kafka y desarrollar los consumidores correspondientes.. | Se ejecutaron 30 pruebas con dobles de prueba. La ejecución con Kafka real se verificó por separado. . |
@@ -36,7 +34,7 @@ Los fragmentos de código desarrollados con asistencia de inteligencia artificia
 
 ## Código con asistencia de IA: Integrante 1 (David)
 
-Generados con Claude Code a partir del contrato; revisados, probados y ajustados por David:
+Generados con Claude Code a partir del contrato y marcados en el código con `# Realizado con IA y revisado por David Larriva`; revisados, probados y ajustados por David:
 - `backend/api_rest/*` (incluye `tests/` y `pruebas/`)
 - `contracts/pedido.schema.json`
 
@@ -51,6 +49,21 @@ Los siguientes archivos o grupos de archivos recibieron asistencia de herramient
 - `backend/kafka/stubs/*`
 - `backend/kafka/tests/*`
 
+## Código con asistencia de IA: Integrante 3 (Domenica Uyunkar)
+
+Revisados y ajustados por Domenica Uyunkar:
+
+- `contracts/grpc/caja.proto` y los stubs gRPC generados.
+- `backend/grpc/caja_client.py` y `backend/grpc/caja_server.py`.
+- `backend/caja/almacen_pagos.py`, `backend/caja/kafka_caja.py` y `backend/caja/main.py`.
+- `backend/facturacion/main.py`.
+- El cambio de Facturación en `backend/kafka/config.py`.
+
+## Código con asistencia de IA: Integrante 4 (Cinthy)
+
+Generados con Claude y marcados en el código con `# Generado con IA (bitácora #N)`; revisados, probados y ajustados por Cinthya:
+- `backend/websockets/*` (servidor, consumidor, simulador, cliente web, prueba de reconexión y tests)
+- `docs/adr/ADR-004-websockets.md` y `docs/pruebas/prueba-websockets.md`
 
 ## Reflexión final
 
@@ -69,3 +82,35 @@ Asimismo, las pruebas generadas inicialmente utilizaban un broker simulado. Aunq
 Finalmente, algunas recomendaciones sobre el uso de Zookeeper y la configuración de `ADVERTISED_LISTENERS` no correspondían a nuestra implementación, ya que utilizamos KRaft y los servicios Python se ejecutaban fuera de Docker.
 
 En conclusión, la IA fue una herramienta de apoyo para acelerar el desarrollo y facilitar la resolución de problemas, pero sus respuestas no siempre fueron compatibles con las decisiones técnicas del equipo. Por ello, fue necesario verificar cada propuesta con los contratos, la arquitectura, la documentación y las pruebas reales antes de incorporarla al proyecto.
+
+- **David:**
+
+Usé Claude Code como apoyo durante todo el trabajo: para revisar el código, como guía para ordenar las tareas y la documentación, y para generar la primera versión de la API a partir del contrato. Las decisiones las tomé yo: qué se incorporaba, qué se descartaba y cómo se integraba con el trabajo de mis compañeros. Cada propuesta la verifiqué ejecutándola y contrastándola con el contrato y con las pruebas reales.
+
+Hubo varios casos en que la IA se equivocó o no aplicaba a nuestro diseño:
+
+1. **Versión de Python.** Recomendó Python 3.12 por una incompatibilidad de una versión antigua de `kafka-python`. Al probarlo, todo funcionaba en Python 3.14 con la versión actual de la librería, así que no seguí esa restricción y lo corregí en el contrato.
+2. **Dos implementaciones de Kafka.** La primera versión de la API tenía su propio productor y consumidor, aunque el reparto decía que eso se coordinaba con el Integrante 2. Funcionaba por separado, pero duplicaba el mecanismo. Al revisar el trabajo de Caro decidí usar su capa común.
+3. **Nombre de la carpeta.** Se mantuvo `api-rest`, con guion, sin advertir que Python no puede importar ese nombre como paquete, cuando el resto del equipo ejecuta los servicios con `python -m backend.<servicio>`.
+4. **Un caso que no vio en el diseño.** La primera versión borraba la clave de idempotencia tras un `503`, sin considerar que Kafka pudo haber escrito el mensaje aunque la confirmación no llegara. Lo detectamos al analizar la prueba real, no al diseñar, y por eso agregué el estado `LIBERADA`.
+5. **Lo que la IA no conoce.** No sabe lo que hacen los compañeros hasta que está en el repositorio, ni las decisiones del grupo. Por ejemplo, el cambio de Facturación apareció recién al revisar `main`, y la decisión de adoptarlo y actualizar el contrato fue mía.
+
+Mi conclusión es que la IA acelera el trabajo y sirve para encontrar casos que se escapan, pero sus respuestas hay que comprobarlas siempre con el sistema funcionando. Varias de sus propuestas eran correctas en general, pero no para nuestra arquitectura.
+
+- **Cinthya:**
+
+Usé Claude para generar el servidor WebSocket, el consumidor de `pedido.estado`, el simulador, la página del cliente, el script de la prueba y la revisión del ADR-004. Cada archivo está marcado con `# Generado con IA (bitácora #N)` y lo revisé para aprovar que es lo que se hacia y así tammbién poder explicarlo.
+
+**Asunción sobre resolución de nombres (`localhost` vs `127.0.0.1` en Windows):** El código generado por la IA asumió que `localhost` se comportaría de forma idéntica en cualquier sistema operativo. En Windows, `localhost` se resuelve primero a la dirección de loopback IPv6 (`::1`). Dado que la API REST (FastAPI / Uvicorn) escuchaba en `0.0.0.0` (solo IPv4), las llamadas HTTP desde la página y los clientes fallaban con `WinError 10061` ("No se pudo cargar el menú" / conexión rechazada), mientras que el servidor WebSocket sí funcionaba porque `websockets` enlaza en dual-stack (IPv4 e IPv6). Se debió intervenir manualmente para parametrizar y forzar `127.0.0.1` en `index.html` y `prueba_reconexion.py`, garantizando compatibilidad IPv4 estricta.
+
+Otro punto: la IA trabajó al principio con un borrador de contratos que tenía el dinero en dólares con decimales, mientras que el contrato v1.0 del repositorio usa centavos y otro formato para los mensajes del WebSocket. Hubo que adaptarla a la versión del repositorio. Además, la IA no pudo probar con Kafka real en su entorno; la prueba con el sistema completo la ejecuté yo.
+
+Conclusión: la IA aceleró el desarrollo, pero sus suposiciones sobre el entorno solo se pueden validar ejecutando el sistema real en las máquinas del equipo.
+
+- **Domenica Uyunkar:**
+
+Usé ChatGPT como apoyo para diseñar la comunicación gRPC entre Facturación y Caja, conectar el servidor gRPC con el almacén de pagos y adaptar Facturación a la capa Kafka del grupo. Las propuestas me sirvieron para avanzar con el contrato `.proto`, el cliente, el servidor y los reintentos, pero tuve que revisarlas y corregir detalles de integración e indentación antes de ejecutar el código.
+
+La prueba de pago tardío mostró un problema importante: si Facturación iniciaba sus seis intentos al recibir `pedido.creado`, podía publicar `FACTURACION_PENDIENTE` antes de que el estudiante pagara. Cambié el disparador para que Facturación actuara ante `PAGO/PAGADO` en `pedido.estado`. Después comprobé en Kafka que el evento guardado se procesó y que se publicó `FACTURADO`.
+
+También verifiqué el timeout gRPC: una llamada a un puerto sin servidor terminó con `DEADLINE_EXCEEDED` en 2,02 segundos. En la prueba de idempotencia, repetir la consulta devolvió el mismo identificador de confirmación. Aprendí a validar las sugerencias con el contrato, los logs y los resultados reales; el código sugerido por la IA necesitó correcciones antes de poder usarlo.
