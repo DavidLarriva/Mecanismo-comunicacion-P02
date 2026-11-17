@@ -1,0 +1,9 @@
+Prueba gRPC 1: servidor no disponible
+Pedido: a8b4c921-5f73-4f82-9ec4-b83202a8ad01
+Destino probado: localhost:50052
+Timeout configurado: 2 segundos
+
+Resultado de consola:
+Código gRPC: DEADLINE_EXCEEDED
+Detalle: Deadline Exceeded
+Tiempo: 2.02 segundos

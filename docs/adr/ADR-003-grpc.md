@@ -19,7 +19,7 @@ separados por esperas de 10 segundos.
 
 ## Alternativas consideradas
 
-- REST: se podría usar, pero el grupo reserva gRPC para esta llamada interna.
+- REST: también permitiría hacer esta consulta y configurar un tiempo de espera. Elegimos gRPC para Facturación y Caja porque `caja.proto` define los datos enviados y recibidos mediante un contrato tipado, y los stubs generados facilitan implementar la comunicación entre ambos servicios. El deadline de 2 segundos limita cuánto espera Facturación la respuesta.
 - Kafka: distribuye mensajes de forma asíncrona, pero Facturación necesita
   la respuesta de Caja para decidir si factura.
 - Sockets TCP: exigirían definir y mantener el protocolo manualmente.

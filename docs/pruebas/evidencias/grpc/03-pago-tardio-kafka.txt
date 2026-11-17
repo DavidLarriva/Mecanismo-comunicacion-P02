@@ -1,0 +1,7 @@
+Prueba de pago tardío y reproducción desde Kafka
+Pedido: a8538411-75eb-4164-8c56-7e53b34efa90
+
+Eventos observados en pedido.estado:
+{"idEvento":"e414e0ab-61c1-45a8-ab7d-f5b360cf1972","idPedido":"a8538411-75eb-4164-8c56-7e53b34efa90","tipo":"FACTURACION","estado":"FACTURACION_PENDIENTE","origen":"facturacion","detalle":{"intentos":6,"ultimoError":"PENDIENTE"},"fecha":"2026-11-16T15:03:51Z"}
+{"idEvento":"49ec34d5-b366-42a4-8f82-29010459f998","idPedido":"a8538411-75eb-4164-8c56-7e53b34efa90","tipo":"PAGO","estado":"PAGADO","origen":"caja","detalle":{"idConfirmacion":"PAG-412BC93D4D9F","monto":150},"fecha":"2026-11-16T15:08:05Z"}
+{"idEvento":"a622b0c4-e755-4a9b-890c-41510620939a","idPedido":"a8538411-75eb-4164-8c56-7e53b34efa90","tipo":"FACTURACION","estado":"FACTURADO","origen":"facturacion","detalle":{"idFactura":"FAC-6242528FFF56"},"fecha":"2026-11-16T15:23:23Z"}

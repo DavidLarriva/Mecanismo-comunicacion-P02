@@ -1,0 +1,8 @@
+Prueba gRPC de idempotencia
+Pedido: a8b4c921-5f73-4f82-9ec4-b83202a8ad01
+
+Resultado de consola:
+Primera confirmación: PAG-3F40D3BBC3CA
+Segunda confirmación: PAG-3F40D3BBC3CA
+Mismo ID: True
+Segunda llamada repetida: True
