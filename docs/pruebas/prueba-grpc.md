@@ -48,7 +48,7 @@
 
 - **Reintentos e idempotencia (prueba 3).** Si una solicitud se repite, Caja debe evitar crear otra confirmación para el mismo pago. En la comprobación gRPC, la segunda llamada devolvió la confirmación anterior y marcó `repetida = true`. Al repetir el `POST` de pago por REST también se recibió `PAG-3F40D3BBC3CA`, y Kafka mostró un solo evento `PAGO/PAGADO` para el pedido probado.
 
-- **Pago tardío y comunicación asíncrona (prueba 4).** Cuando Facturación se activaba al recibir `pedido.creado`, podía iniciar sus seis intentos antes de que el estudiante pagara. Si esos intentos terminaban primero, el sistema publicaba `FACTURACION_PENDIENTE`. El cambio hizo que Facturación actuara al recibir `PAGO/PAGADO` en `pedido.estado`: Kafka avisa que ocurrió el pago y gRPC permite consultar a Caja, que mantiene el estado del cobro.
+- **Pago tardío y comunicación asíncrona (prueba 4).** Aunque Facturación recibe el evento `PAGO/PAGADO` por Kafka, consulta a Caja para confirmar el estado actual del pago antes de continuar. Kafka comunica y conserva lo ocurrido, mientras que Caja mantiene el estado oficial del pago. La consulta por gRPC tiene un deadline de 2 segundos para que Facturación no espere indefinidamente.
 
 - **Persistencia y reproducción de eventos.** Kafka conservó el evento de pago mientras Facturación no lo procesaba. Después del reinicio, el consumidor pudo leerlo y publicar `FACTURADO`. Esto muestra cómo la persistencia de mensajes permite que productor y consumidor no tengan que estar activos al mismo tiempo.
 
