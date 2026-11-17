@@ -1,7 +1,6 @@
 # Contratos de CampusBite
 
-Versión 1.3 — contrato de comunicación entre servicios, basado en el flujo integrado (pasos 1 a 10).
-Ningún integrante cambia por su cuenta un endpoint, un topic, un evento, el `.proto` o un estado: cualquier cambio se acuerda en grupo y se registra en la sección 9.
+Versión 1.3 del contrato de comunicación entre los servicios.
 
 ---
 
@@ -9,25 +8,25 @@ Ningún integrante cambia por su cuenta un endpoint, un topic, un evento, el `.p
 
 | Tema | Acuerdo |
 |---|---|
-| Formato | JSON en UTF-8; nombres de campos en `camelCase` (en el `.proto`, `snake_case`, como manda la convención de Protobuf) |
-| Identificadores | `idPedido`: UUID v4 generado por la API. `idEstudiante`: texto (cédula o código). `idEvento`: UUID v4 generado por quien publica |
+| Formato | JSON en UTF-8 con los nombres de campos en `camelCase`. En el `.proto` se usa `snake_case`, que es la convención de Protobuf |
+| Identificadores | `idPedido` es un UUID v4 que genera la API. `idEstudiante` es texto, la cédula o el código. `idEvento` es un UUID v4 que genera quien publica |
 | Fechas | ISO 8601 en UTC, por ejemplo `2026-11-13T15:04:05Z` |
-| Dinero | Entero en **centavos** de dólar (`250` = $2,50). Se evita `float` para no tener errores de redondeo. Solo la interfaz lo muestra con decimales |
+| Dinero | Entero en **centavos** de dólar, por ejemplo `250` es $2,50. No usamos `float` para evitar errores de redondeo. Solo la interfaz lo muestra con decimales |
 | Errores REST | `{"error": "CODIGO", "mensaje": "texto legible"}` en todos los servicios |
-| Validación | Los errores de validación de FastAPI (`422` por defecto) se convierten a `400 DATOS_INVALIDOS` |
-| CORS | Las APIs REST habilitan CORS para que el cliente web pueda llamarlas desde el navegador |
-| Datos | En memoria. Si un servicio se reinicia, pierde su estado (limitación documentada) |
+| Validación | Los errores de validación de FastAPI, que por defecto son `422`, se convierten a `400 DATOS_INVALIDOS` |
+| CORS | Las APIs REST tienen CORS habilitado para que el cliente web las pueda llamar desde el navegador |
+| Datos | En memoria. Si un servicio se reinicia pierde su estado, y es una limitación que ya está documentada |
 
 ### Tecnologías
 
 | Uso | Librería |
 |---|---|
-| Lenguaje | Python 3.12 o superior (probado en 3.14), en un `.venv`. Las versiones exactas están en `requirements.txt` |
+| Lenguaje | Python 3.12 o superior dentro de un `.venv`. Lo probamos en 3.14 y las versiones exactas están en `requirements.txt` |
 | REST | `fastapi` + `uvicorn` |
-| Kafka | `kafka-python` 3.0 (la 2.0.2 falla en Python 3.12+). Los consumidores corren en un hilo aparte porque la librería es bloqueante |
+| Kafka | `kafka-python` 3.0, porque la 2.0.2 falla desde Python 3.12. Los consumidores corren en un hilo aparte porque la librería es bloqueante |
 | gRPC | `grpcio` + `grpcio-tools` |
 | WebSocket | `websockets` |
-| Kafka (broker) | Docker Compose, modo KRaft, en `infra/docker-compose.yml` |
+| Kafka (broker) | Docker Compose en modo KRaft, definido en `infra/docker-compose.yml` |
 
 ### Servicios, responsables y puertos
 
@@ -36,26 +35,26 @@ Ningún integrante cambia por su cuenta un endpoint, un topic, un evento, el `.p
 | API de Pedidos | David | 8000 | REST (servidor), Kafka (productor y consumidor) |
 | Caja: REST del cajero | Dome | 8001 | REST (servidor), Kafka (productor y consumidor) |
 | Caja: servidor gRPC | Dome | 50051 | gRPC (servidor) |
-| Facturación | Dome | — | Kafka (productor y consumidor), gRPC (cliente) |
-| Cocina | Caro | — | Kafka (productor y consumidor) |
+| Facturación | Dome | No tiene | Kafka (productor y consumidor), gRPC (cliente) |
+| Cocina | Caro | No tiene | Kafka (productor y consumidor) |
 | Estadísticas | Caro | 8002 | REST (servidor), Kafka (consumidor) |
 | Notificaciones | Cinthy | 8765 | WebSocket (servidor), Kafka (consumidor) |
-| Kafka | Caro | 9092 | — |
+| Kafka | Caro | 9092 | Es el broker |
 
 ---
 
 ## 1. Estados
 
-El estado de un pedido tiene cuatro dimensiones independientes. Cada una tiene **un solo servicio con autoridad** para cambiarla.
+El estado de un pedido tiene cuatro partes independientes, y cada una tiene **un solo servicio con autoridad** para cambiarla.
 
 | Tipo | Valores | Quién lo cambia | ¿Se publica en `pedido.estado`? |
 |---|---|---|---|
-| `PREPARACION` | `RECIBIDO` → `EN_PREPARACION` → `LISTO` | API (`RECIBIDO`), Cocina (los otros) | `RECIBIDO` no (está implícito en `pedido.creado`); los otros sí |
+| `PREPARACION` | `RECIBIDO` → `EN_PREPARACION` → `LISTO` | La API pone `RECIBIDO` y Cocina los otros dos | `RECIBIDO` no, porque ya va implícito en `pedido.creado`. Los otros sí |
 | `PAGO` | `PENDIENTE` → `PAGADO` | Caja | Sí |
 | `FACTURACION` | `FACTURADO` o `FACTURACION_PENDIENTE` | Facturación | Sí |
-| `ENTREGA` | `ENTREGADO` | API (por acción del cajero) | Sí |
+| `ENTREGA` | `ENTREGADO` | La API, cuando el cajero entrega | Sí |
 
-Combinaciones válidas en un evento `pedido.estado` (cualquier otra se ignora y se registra en el log):
+Estas son las combinaciones válidas en un evento `pedido.estado`. Cualquier otra se ignora y se anota en el log.
 
 | `tipo` | `estado` | `origen` |
 |---|---|---|
@@ -64,17 +63,17 @@ Combinaciones válidas en un evento `pedido.estado` (cualquier otra se ignora y 
 | `FACTURACION` | `FACTURADO`, `FACTURACION_PENDIENTE` | `facturacion` |
 | `ENTREGA` | `ENTREGADO` | `api` |
 
-Decisiones:
-- **Cocina prepara sin esperar el pago.** En una cafetería es razonable y evita encadenar cocina con caja.
-- **Solo se entrega un pedido `LISTO` y `PAGADO`.**
+Decisiones que tomamos sobre los estados.
+- **Cocina prepara sin esperar el pago.** En una cafetería tiene sentido y así cocina no depende de caja.
+- **Solo se entrega un pedido que está `LISTO` y `PAGADO`.**
 
 ---
 
 ## 2. REST: API de Pedidos (David, puerto 8000)
 
-### Menú (fijo, en memoria en la API)
+### Menú (fijo y en memoria dentro de la API)
 
-El cliente no envía precios: la API toma el nombre y el precio del menú y calcula el total. Así el cliente no puede manipularlo.
+El cliente no manda precios. La API toma el nombre y el precio del menú y calcula el total, así el cliente no lo puede manipular.
 
 `GET /menu` → `200`
 ```json
@@ -87,9 +86,9 @@ El cliente no envía precios: la API toma el nombre y el precio del menú y calc
 
 ### `POST /pedidos`
 
-Cabecera obligatoria: `Idempotency-Key: <texto único generado por el cliente, por ejemplo un UUID>`
+La cabecera `Idempotency-Key` es obligatoria. Su valor es un texto único que genera el cliente, por ejemplo un UUID.
 
-Cuerpo:
+El cuerpo es así.
 ```json
 {
   "idEstudiante": "0102030405",
@@ -100,7 +99,7 @@ Cuerpo:
 }
 ```
 
-Respuesta (`201`, o `200` si es un reintento):
+La respuesta es `201`, o `200` si se trata de un reintento.
 ```json
 {
   "idPedido": "7f3c2a1e-9b4d-4c1a-8e2f-1a2b3c4d5e6f",
@@ -120,58 +119,58 @@ Respuesta (`201`, o `200` si es un reintento):
 
 | Código | Cuándo | `error` |
 |---|---|---|
-| `201` | Pedido nuevo y Kafka confirmó la publicación | — |
-| `200` | La clave ya está `COMPLETADA` con el mismo cuerpo: se devuelve la respuesta guardada, sin crear otro pedido | — |
+| `201` | Pedido nuevo y Kafka confirmó la publicación | No aplica |
+| `200` | La clave ya está `COMPLETADA` con el mismo cuerpo. Se devuelve la respuesta guardada y no se crea otro pedido | No aplica |
 | `400` | Falta la cabecera | `FALTA_IDEMPOTENCY_KEY` |
-| `400` | Lista vacía, cantidad ≤ 0, producto que no está en el menú, campos faltantes | `DATOS_INVALIDOS` |
-| `409` | La clave está `EN_PROCESO` (otra solicitud igual en curso) | `SOLICITUD_EN_CURSO` |
+| `400` | Lista vacía, cantidad ≤ 0, un producto que no está en el menú o campos que faltan | `DATOS_INVALIDOS` |
+| `409` | La clave está `EN_PROCESO` porque otra solicitud igual sigue en curso | `SOLICITUD_EN_CURSO` |
 | `409` | La clave ya se usó con un cuerpo distinto | `CLAVE_REUTILIZADA` |
-| `503` | Kafka no confirmó en 5 s. La clave queda `LIBERADA` y el pedido no queda registrado | `SERVICIO_NO_DISPONIBLE` |
+| `503` | Kafka no confirmó en 5 s. La clave queda `LIBERADA` y el pedido no se registra | `SERVICIO_NO_DISPONIBLE` |
 
-Registro de claves (en memoria, protegido con un lock):
+El registro de claves está en memoria y protegido con un lock.
 ```
 { clave: { estado: EN_PROCESO | COMPLETADA | LIBERADA, hashCuerpo, idPedido, respuesta, creada } }
 ```
-Reglas:
-1. Con el lock tomado: si la clave no existe, se guarda como `EN_PROCESO`; si existe, se responde según la tabla.
-2. Se publica en Kafka esperando confirmación (fuera del lock).
-3. Si Kafka confirma: se guarda el pedido, la clave pasa a `COMPLETADA` con su respuesta, y se responde `201`.
-4. Si Kafka falla: la clave pasa a `LIBERADA` y se responde `503`. Un reintento con la misma clave y el mismo cuerpo se procesa de nuevo **con el mismo `idPedido`**: si Kafka sí había escrito el primer mensaje, los consumidores lo descartan por `idPedido`.
-5. Una clave `EN_PROCESO` por más de 30 s se considera vencida y se libera.
+Así se usa el registro.
+1. Con el lock tomado, si la clave no existe se guarda como `EN_PROCESO`. Si ya existe se responde según la tabla.
+2. Fuera del lock se publica en Kafka y se espera la confirmación.
+3. Si Kafka confirma, se guarda el pedido, la clave pasa a `COMPLETADA` con su respuesta y se responde `201`.
+4. Si Kafka falla, la clave pasa a `LIBERADA` y se responde `503`. Un reintento con la misma clave y el mismo cuerpo se procesa otra vez **con el mismo `idPedido`**, así que si Kafka sí había escrito el primer mensaje los consumidores lo descartan por `idPedido`.
+5. Si una clave lleva más de 30 s en `EN_PROCESO` se da por vencida y se libera.
 
 ### `GET /pedidos/{idPedido}`
-- `200` con el objeto de arriba, actualizado con los eventos de `pedido.estado`.
-- `404` `PEDIDO_NO_ENCONTRADO`.
+- `200` con el mismo objeto de arriba, actualizado con los eventos de `pedido.estado`.
+- `404` `PEDIDO_NO_ENCONTRADO` si no existe.
 
 ### `PATCH /pedidos/{idPedido}/entregar`
-Sin cuerpo. Lo usa el cajero en el mostrador.
+No lleva cuerpo. Lo usa el cajero en el mostrador.
 
 | Código | Cuándo | `error` |
 |---|---|---|
-| `200` | Estaba `LISTO` y `PAGADO`: queda entregado y publica `ENTREGA/ENTREGADO` | — |
-| `200` | Ya estaba entregado: responde igual, sin publicar otra vez | — |
+| `200` | Estaba `LISTO` y `PAGADO`, así que queda entregado y se publica `ENTREGA/ENTREGADO` | No aplica |
+| `200` | Ya estaba entregado. Responde lo mismo y no vuelve a publicar | No aplica |
 | `404` | No existe | `PEDIDO_NO_ENCONTRADO` |
 | `409` | No está `LISTO` | `PEDIDO_NO_LISTO` |
 | `409` | Está `LISTO` pero no `PAGADO` | `PEDIDO_NO_PAGADO` |
-| `503` | Kafka no confirmó la publicación; el pedido no cambia | `SERVICIO_NO_DISPONIBLE` |
+| `503` | Kafka no confirmó la publicación y el pedido no cambia | `SERVICIO_NO_DISPONIBLE` |
 
 ---
 
 ## 3. REST: Caja (Dome, puerto 8001)
 
 ### `POST /caja/pagos/{idPedido}`
-Lo usa el cajero cuando el estudiante paga en el mostrador. Cuerpo opcional: `{ "metodo": "EFECTIVO" | "TARJETA" }` (por defecto `EFECTIVO`).
+Lo usa el cajero cuando el estudiante paga en el mostrador. El cuerpo es opcional, `{ "metodo": "EFECTIVO" | "TARJETA" }`, y si no se manda se toma `EFECTIVO`.
 
-Caja solo conoce los cobros que registró al leer `pedido.creado`; no consulta a la API.
+Caja solo conoce los cobros que registró al leer `pedido.creado` y no le consulta nada a la API.
 
 | Código | Cuándo | `error` |
 |---|---|---|
-| `200` | El cobro pasa de `PENDIENTE` a `PAGADO`; genera `idConfirmacion` y publica `PAGO/PAGADO` | — |
-| `200` | Ya estaba `PAGADO`: devuelve lo mismo, sin volver a contar ni publicar | — |
-| `404` | Caja aún no tiene ese cobro (todavía no leyó `pedido.creado`, o el pedido no existe) | `COBRO_NO_ENCONTRADO` |
-| `503` | El pago quedó registrado, pero Kafka no confirmó `PAGO/PAGADO`. Al reintentar, Caja publica el mismo evento (mismo `idEvento`) y devuelve la misma confirmación | `SERVICIO_NO_DISPONIBLE` |
+| `200` | El cobro pasa de `PENDIENTE` a `PAGADO`, se genera el `idConfirmacion` y se publica `PAGO/PAGADO` | No aplica |
+| `200` | Ya estaba `PAGADO`. Devuelve lo mismo sin volver a contarlo ni publicarlo | No aplica |
+| `404` | Caja todavía no tiene ese cobro, porque aún no leyó `pedido.creado` o porque el pedido no existe | `COBRO_NO_ENCONTRADO` |
+| `503` | El pago quedó registrado pero Kafka no confirmó `PAGO/PAGADO`. En el reintento Caja publica el mismo evento, con el mismo `idEvento`, y devuelve la misma confirmación | `SERVICIO_NO_DISPONIBLE` |
 
-Respuesta:
+La respuesta tiene esta forma.
 ```json
 {
   "idPedido": "7f3c2a1e-...",
@@ -183,7 +182,7 @@ Respuesta:
 }
 ```
 
-`GET /caja/pagos/{idPedido}` → `200` con el mismo objeto (estado `PENDIENTE` o `PAGADO`), o `404 COBRO_NO_ENCONTRADO`.
+`GET /caja/pagos/{idPedido}` responde `200` con el mismo objeto, en estado `PENDIENTE` o `PAGADO`, o `404 COBRO_NO_ENCONTRADO`.
 
 ---
 
@@ -202,9 +201,7 @@ Respuesta:
   "actualizado": "2026-11-13T16:00:00Z"
 }
 ```
-- `pedidosRecibidos` y `porProducto` salen de `pedido.creado`.
-- `pedidosPagados` y `pedidosEntregados` salen de `pedido.estado`.
-- `ventasEntregadas` suma el total de los pedidos con `ENTREGA/ENTREGADO`.
+`pedidosRecibidos` y `porProducto` se calculan con `pedido.creado`, y `pedidosPagados` y `pedidosEntregados` con `pedido.estado`. `ventasEntregadas` es la suma del total de los pedidos que tienen `ENTREGA/ENTREGADO`.
 
 ---
 
@@ -215,14 +212,14 @@ Respuesta:
 | `pedido.creado` | 3 | `idPedido` | API | `cocina`, `caja`, `estadisticas` |
 | `pedido.estado` | 3 | `idPedido` | API, Cocina, Caja, Facturación | `api`, `notificaciones`, `facturacion`, `estadisticas` |
 
-Facturación no consume `pedido.creado`: se activa con el evento `PAGO/PAGADO` de `pedido.estado` e ignora los demás (sección 6).
+Facturación no consume `pedido.creado`. Se activa con el evento `PAGO/PAGADO` de `pedido.estado` e ignora los demás (sección 6).
 
-Configuración:
-- **Topics:** se crean explícitamente con 3 particiones (por script o en el `docker-compose`). No se confía en la creación automática, que usaría 1 partición.
-- **Serialización:** clave = `idPedido` en UTF-8; valor = JSON en UTF-8.
-- **Productor:** `acks='all'`; se espera la confirmación con `future.get(timeout=5)`.
-- **Consumidor:** `auto_offset_reset='earliest'`, `enable_auto_commit=False`, y `commit()` **después** de procesar el mensaje. Si el servicio se cae a mitad, el mensaje se vuelve a leer.
-- **Orden:** como la clave es `idPedido`, todos los eventos de un pedido van a la misma partición y se leen en el orden en que se escribieron.
+Configuración acordada.
+- **Topics.** Se crean a propósito con 3 particiones, con un script o en el `docker-compose`. No dependemos de la creación automática porque usaría 1 partición.
+- **Serialización.** La clave es el `idPedido` en UTF-8 y el valor es JSON en UTF-8.
+- **Productor.** Usa `acks='all'` y espera la confirmación con `future.get(timeout=5)`.
+- **Consumidor.** Usa `auto_offset_reset='earliest'` y `enable_auto_commit=False`, y hace `commit()` **después** de procesar el mensaje. Si el servicio se cae a la mitad, el mensaje se vuelve a leer.
+- **Orden.** Como la clave es `idPedido`, todos los eventos de un pedido van a la misma partición y se leen en el orden en que se escribieron.
 
 ### Evento `pedido.creado`
 ```json
@@ -238,7 +235,7 @@ Configuración:
   "fecha": "2026-11-13T15:04:05Z"
 }
 ```
-La `Idempotency-Key` no viaja en el evento: es un detalle interno de la API.
+La `Idempotency-Key` no va en el evento porque es un detalle interno de la API.
 
 ### Evento `pedido.estado`
 ```json
@@ -253,7 +250,7 @@ La `Idempotency-Key` no viaja en el evento: es un detalle interno de la API.
 }
 ```
 
-Contenido de `detalle` según el estado:
+El contenido de `detalle` depende del estado.
 
 | Estado | `detalle` |
 |---|---|
@@ -263,8 +260,8 @@ Contenido de `detalle` según el estado:
 | Los demás | `{}` |
 
 ### Deduplicación (Kafka entrega "al menos una vez")
-- `pedido.creado`: cada consumidor guarda los `idPedido` ya procesados e ignora los repetidos.
-- `pedido.estado`: cada consumidor guarda los `idEvento` ya procesados e ignora los repetidos.
+
+En `pedido.creado` cada consumidor guarda los `idPedido` que ya procesó e ignora los repetidos. En `pedido.estado` hace lo mismo con los `idEvento`.
 
 ---
 
@@ -302,17 +299,17 @@ message ConfirmarPagoResponse {
 }
 ```
 
-Reglas del servidor (Caja):
-- La primera vez que responde `PAGADO` para un pedido, marca ese pago como "confirmado para facturar".
-- Si la llamada llega otra vez, responde lo mismo con `repetida = true` y no vuelve a contarla. Es la semántica "a lo sumo una vez".
+Reglas del servidor, que es Caja.
+- La primera vez que responde `PAGADO` para un pedido marca ese pago como confirmado para facturar.
+- Si la llamada llega de nuevo responde lo mismo con `repetida = true` y no la vuelve a contar. Esa es la semántica "a lo sumo una vez".
 
-Reglas del cliente (Facturación):
-- Llama a `ConfirmarPago` cuando lee un evento `PAGO/PAGADO` en `pedido.estado`. El evento solo avisa: la confirmación la da Caja, que es la autoridad sobre el pago.
-- Deadline de 2 s por llamada (`timeout=2`).
-- `DEADLINE_EXCEEDED` o `UNAVAILABLE` (errores de transporte), `PENDIENTE` o `NO_ENCONTRADO` (respuestas de negocio) → reintenta cada 10 s, máximo 6 intentos. Después publica `FACTURACION/FACTURACION_PENDIENTE`.
-- `PAGADO` → emite una sola factura por pedido (guarda los `idPedido` facturados) y publica `FACTURACION/FACTURADO`.
+Reglas del cliente, que es Facturación.
+- Llama a `ConfirmarPago` cuando lee un evento `PAGO/PAGADO` en `pedido.estado`. El evento solo avisa, y la confirmación la da Caja porque es la autoridad sobre el pago.
+- Cada llamada tiene un deadline de 2 s (`timeout=2`).
+- Si recibe un error de transporte como `DEADLINE_EXCEEDED` o `UNAVAILABLE`, o una respuesta de negocio como `PENDIENTE` o `NO_ENCONTRADO`, reintenta cada 10 s hasta 6 veces. Después publica `FACTURACION/FACTURACION_PENDIENTE`.
+- Si recibe `PAGADO` emite una sola factura por pedido, para eso guarda los `idPedido` facturados, y publica `FACTURACION/FACTURADO`.
 
-Los stubs de Python se generan con:
+Los stubs de Python se generan con este comando.
 ```bash
 python -m grpc_tools.protoc -I contracts/grpc --python_out=<destino> --grpc_python_out=<destino> contracts/grpc/caja.proto
 ```
@@ -321,7 +318,7 @@ python -m grpc_tools.protoc -I contracts/grpc --python_out=<destino> --grpc_pyth
 
 ## 7. WebSocket: Notificaciones (Cinthy, `ws://localhost:8765`)
 
-Cliente → servidor:
+Mensajes del cliente al servidor:
 ```json
 { "accion": "suscribir", "idPedido": "7f3c2a1e-..." }
 ```
@@ -329,7 +326,7 @@ Cliente → servidor:
 { "accion": "desuscribir", "idPedido": "7f3c2a1e-..." }
 ```
 
-Servidor → cliente:
+Mensajes del servidor al cliente:
 ```json
 { "tipo": "suscrito", "idPedido": "7f3c2a1e-..." }
 ```
@@ -340,21 +337,21 @@ Servidor → cliente:
 { "tipo": "error", "mensaje": "Mensaje inválido" }
 ```
 
-El servidor reenvía el evento de `pedido.estado` sin modificarlo, dentro de `evento`, para no tener un segundo formato.
+El servidor reenvía el evento de `pedido.estado` tal como llega, dentro de `evento`, para no tener que manejar un segundo formato.
 
-Reglas del servidor:
-- Guarda `idPedido → conjunto de conexiones` y envía a cada conexión solo los eventos de los pedidos a los que se suscribió.
-- Un mensaje inválido responde `error`, pero no cierra la conexión.
-- Si una conexión se cierra o falla al enviar, se elimina sin detener el servidor.
+Reglas del servidor.
+- Guarda para cada `idPedido` el conjunto de conexiones suscritas y a cada conexión le manda solo los eventos de sus pedidos.
+- Si recibe un mensaje inválido responde `error`, pero no cierra la conexión.
+- Si una conexión se cierra o falla al enviar, la quita sin detener el servidor.
 - Usa el ping de la librería (`ping_interval=20`) para detectar conexiones muertas.
-- Los eventos de pedidos sin conexión abierta se descartan. El estado vive en el backend y el cliente lo recupera con `GET`.
+- Si un pedido no tiene ninguna conexión abierta, sus eventos se descartan. El estado sigue en el backend y el cliente lo recupera con `GET`.
 
-Reglas del cliente:
+Reglas del cliente.
 1. Abre el WebSocket y se suscribe.
-2. **Después** hace `GET /pedidos/{idPedido}` para obtener el estado vigente.
-3. Si la conexión se cae, reintenta cada 3 s y, al reconectar, repite los pasos 1 y 2.
+2. **Después** hace `GET /pedidos/{idPedido}` para conocer el estado actual.
+3. Si la conexión se cae reintenta cada 3 s, y cuando se reconecta repite los pasos 1 y 2.
 
-Ese orden evita perder un evento que llegue entre la consulta y la suscripción.
+Con ese orden no se pierde un evento que llegue entre la consulta y la suscripción.
 
 ---
 
@@ -365,7 +362,7 @@ Ese orden evita perder un evento que llegue entre la consulta y la suscripción.
 | 1 | Cliente → API | REST | `POST /pedidos` |
 | 2 | API → Kafka | Kafka | `pedido.creado` |
 | 3 | Cliente → Notificaciones, luego → API | WebSocket, REST | `suscribir`, `GET /pedidos/{id}` |
-| 4 | Kafka → Cocina, Caja, Estadísticas | Kafka | `pedido.creado`; Caja publica `PAGO/PENDIENTE` |
+| 4 | Kafka → Cocina, Caja, Estadísticas | Kafka | `pedido.creado`, y Caja publica `PAGO/PENDIENTE` |
 | 5 | Cocina → Kafka → API, Notificaciones | Kafka, WebSocket | `PREPARACION/EN_PREPARACION` |
 | 6 | Cajero → Caja | REST | `POST /caja/pagos/{id}` → `PAGO/PAGADO` |
 | 7 | Kafka → Facturación → Caja | Kafka, gRPC | `PAGO/PAGADO` → `ConfirmarPago` → `FACTURACION/FACTURADO` |
@@ -374,12 +371,3 @@ Ese orden evita perder un evento que llegue entre la consulta y la suscripción.
 | 10 | Cliente se reconecta | WebSocket, REST | `suscribir` y luego `GET` |
 
 ---
-
-## 9. Registro de cambios
-
-| Versión | Fecha | Cambio | Acordado por |
-|---|---|---|---|
-| 1.0 | 2026-11-12 | Versión inicial | David, Caro, Dome, Cinthy |
-| 1.1 | 2026-11-12 | Python 3.12 o superior y versiones fijadas en `requirements.txt`; se agrega `contracts/pedido.schema.json` | David, Caro, Dome, Cinthy |
-| 1.2 | 2026-11-15 | Tras un `503` la clave queda `LIBERADA` y el reintento conserva el `idPedido` (antes se borraba la clave) | David, Caro, Dome, Cinthy |
-| 1.3 | 2026-11-16 | Facturación consume `pedido.estado` y se activa con `PAGO/PAGADO`, en lugar de consumir `pedido.creado` y consultar a Caja antes del pago. Con el diseño anterior, un pago hecho después de los 6 intentos (unos 60 s) dejaba el pedido sin factura. Se agrega el `503` de `POST /caja/pagos` | David, Caro, Dome, Cinthy |

@@ -7,37 +7,33 @@
 
 ## Contexto
 
-La consigna obliga a usar REST para la API con la que los estudiantes crean y consultan pedidos. El resto de los mecanismos se elige entre Sockets TCP, RPC/RMI, gRPC, Kafka y WebSockets, con al menos uno asíncrono. Todos deben formar parte del mismo flujo.
+La consigna exige REST para la API con la que los estudiantes crean y consultan sus pedidos. Los demás mecanismos se eligen entre Sockets TCP, RPC/RMI, gRPC, Kafka y WebSockets, y al menos uno tiene que ser asíncrono. Todos deben ser parte del mismo flujo.
 
-El enunciado es para grupos de tres y pide tres mecanismos. El grupo tiene cuatro integrantes, y el PDF de división del trabajo asigna un mecanismo a cada uno. Por eso se eligieron **tres** además de REST.
+El enunciado está pensado para grupos de tres y pide tres mecanismos. Nuestro grupo tiene cuatro integrantes y el PDF de división del trabajo le asigna un mecanismo a cada uno, por eso elegimos **tres** además de REST.
 
-El sistema tiene cuatro tipos de comunicación con necesidades distintas:
+En el sistema hay cuatro tipos de comunicación y cada uno necesita algo distinto.
 
-1. **Estudiante → sistema.** Crear y consultar el pedido desde un navegador o un celular, con respuesta inmediata.
+1. **Estudiante → sistema.** Crear y consultar el pedido desde un navegador o un celular y recibir respuesta enseguida.
 2. **API → servicios internos.** Un pedido nuevo tiene que llegar a Cocina, Caja, Facturación y Estadísticas sin que la API los espere, aunque alguno esté detenido.
-3. **Facturación → Caja.** Antes de emitir la factura, Facturación necesita saber, en el momento y de la fuente autorizada, si el pago está confirmado.
-4. **Sistema → estudiante.** El estudiante quiere enterarse en el momento en que su pedido está listo, sin quedarse consultando.
+3. **Facturación → Caja.** Antes de emitir la factura, Facturación necesita saber en ese momento, y por la fuente autorizada, si el pago está confirmado.
+4. **Sistema → estudiante.** El estudiante quiere saber apenas su pedido está listo, sin tener que estar consultando.
 
 ## Decisión
 
 | Comunicación | Mecanismo | Tipo | ADR |
 |---|---|---|---|
-| Estudiante y cajero → API de Pedidos; cajero → Caja; administración → Estadísticas | REST | Síncrono | ADR-001 |
+| Estudiante y cajero → API de Pedidos, cajero → Caja, administración → Estadísticas | REST | Síncrono | ADR-001 |
 | API y servicios → servicios (`pedido.creado`, `pedido.estado`) | Kafka | Asíncrono, persistente | ADR-002 |
 | Facturación → Caja (`ConfirmarPago`) | gRPC unario | Síncrono, con deadline de 2 s | ADR-003 |
-| Notificaciones → estudiante | WebSocket | Asíncrono para el cliente (server push) | ADR-004 |
+| Notificaciones → estudiante | WebSocket | Asíncrono para el cliente, con server push | ADR-004 |
 
-Reglas de la arquitectura conjunta, fijadas en `docs/contratos.md`:
+La arquitectura conjunta sigue estas reglas, que están en `docs/contratos.md`.
 
-- **Kafka es el único canal de cambios de estado.** Ningún servicio consulta a otro para enterarse de un estado. Lo lee de `pedido.estado` con su propio consumer group.
-- **Cada estado tiene un solo dueño:**
-  - Preparación: Cocina.
-  - Pago: Caja.
-  - Facturación: Facturación.
-  - Recepción y entrega: la API.
-- **gRPC solo donde hace falta una respuesta.** Es una sola llamada interna. Todo lo demás entre servicios va por Kafka.
-- **El WebSocket solo avisa.** La fuente de verdad del estado es la API (`GET /pedidos/{id}`). El cliente se suscribe primero y después consulta.
-- **Contrato común:** el mismo formato de evento (`contracts/pedido.schema.json`), la clave `idPedido` en todos los mensajes y el `.proto` versionado en `contracts/grpc/`.
+- **Kafka es el único canal para los cambios de estado.** Ningún servicio le pregunta a otro por un estado, lo lee de `pedido.estado` con su propio consumer group.
+- **Cada estado tiene un solo dueño.** Cocina maneja la preparación, Caja el pago, Facturación la facturación y la API la recepción y la entrega.
+- **gRPC solo donde hace falta una respuesta.** Es una única llamada interna y todo lo demás entre servicios va por Kafka.
+- **El WebSocket solo avisa.** El estado real lo tiene la API en `GET /pedidos/{id}`. El cliente primero se suscribe y después consulta.
+- **Contrato común.** Todos usan el mismo formato de evento (`contracts/pedido.schema.json`), la clave `idPedido` en todos los mensajes y el `.proto` versionado en `contracts/grpc/`.
 
 ## Alternativas consideradas
 
@@ -49,24 +45,20 @@ Reglas de la arquitectura conjunta, fijadas en `docs/contratos.md`:
 | **Kafka para todo, incluida la consulta a Caja** | `ConfirmarPago` es una pregunta que necesita respuesta antes de continuar. Con Kafka habría que publicar la pregunta, esperar la respuesta en otro topic y relacionarlas, y eso es construir un RPC encima de una cola. |
 | **gRPC entre todos los servicios** | Haría que las comunicaciones internas dependieran de respuestas directas y de que los servicios involucrados estuvieran disponibles al mismo tiempo. También reemplazaría el intercambio asíncrono y la persistencia que aporta Kafka. La guía de división reserva gRPC para una comunicación interna específica. |
 | **Consultar el estado con `GET` cada pocos segundos (polling) en lugar de WebSocket** | Genera tráfico constante aunque el pedido no cambie, y el aviso llega con el retraso del intervalo. El WebSocket empuja el cambio en cuanto ocurre, con una sola conexión. |
-| **Solo dos mecanismos además de REST (Kafka y WebSocket)** | Cumpliría la consigna para tres personas, pero dejaría a un integrante sin mecanismo propio. Facturación tendría que fiarse del evento de pago sin confirmarlo con Caja. |
+| **Solo dos mecanismos además de REST (Kafka y WebSocket)** | Cumpliría la consigna para tres personas, pero un integrante se quedaría sin mecanismo propio. Además Facturación tendría que confiar en el evento de pago sin confirmarlo con Caja. |
 
 ## Justificación
 
-La elección sigue la guía de selección del capítulo 2 (sección 8.1), aplicada a cada comunicación:
+Para elegir seguimos la guía de selección del capítulo 2 (sección 8.1) en cada comunicación.
 
-- **REST para el cliente:** es compatible con cualquier navegador y la latencia es tolerable. El estudiante necesita una respuesta síncrona: su `idPedido`, o el error si algo falla.
+- **REST para el cliente:** funciona en cualquier navegador y su latencia es aceptable. El estudiante necesita una respuesta síncrona con su `idPedido`, o con el error si algo falla.
 - **Kafka entre servicios:** se utiliza para distribuir eventos sin establecer una comunicación directa entre el servicio que los genera y los componentes que los reciben. La API puede publicar un pedido sin conocer qué servicios lo procesarán ni esperar a que finalicen sus operaciones. Si alguno de los consumidores se encuentra detenido, los mensajes pueden permanecer almacenados en Kafka y ser procesados cuando vuelva a estar disponible. Esto favorece la separación entre componentes, permite incorporar nuevos consumidores sin modificar la API y contribuye a la tolerancia a fallos.
 - **gRPC para Facturación → Caja:** se usa en esta consulta porque Facturación necesita confirmar el pago con Caja antes de emitir la factura. El contrato tipado define lo que intercambian ambos servicios y el deadline de 2 s limita la espera si Caja no responde (escenario 3). La respuesta incluye repetida, que permite reconocer una consulta ya procesada sin generar otra confirmación.
 - **WebSocket para el aviso:** es para tiempo real con clientes web. La conexión queda abierta y el servidor toma la iniciativa (escenario 5).
 
-Así, dos mecanismos son síncronos (REST y gRPC) y dos son asíncronos (Kafka y WebSocket). Lo síncrono queda donde alguien necesita una respuesta para continuar, y lo asíncrono donde basta con que la información llegue.
+Al final quedaron dos mecanismos síncronos, REST y gRPC, y dos asíncronos, Kafka y WebSocket. Usamos lo síncrono donde alguien necesita una respuesta para seguir, y lo asíncrono donde basta con que la información llegue.
 
-La prueba de integración (`docs/pruebas/integracion.md`) mostró los cuatro mecanismos en un mismo pedido:
-
-- La API respondió en 0,1 s mientras Cocina tardaba 5 s.
-- Los siete eventos del pedido quedaron en orden en la misma partición, publicados por cuatro servicios distintos.
-- El estudiante recibió los seis cambios de estado por WebSocket.
+En la prueba de integración (`docs/pruebas/integracion.md`) se vieron los cuatro mecanismos en un mismo pedido. La API respondió en 0,1 s mientras Cocina tardaba 5 s, los siete eventos del pedido quedaron en orden en la misma partición aunque los publicaron cuatro servicios distintos, y el estudiante recibió los seis cambios de estado por WebSocket.
 
 ## Consecuencias
 

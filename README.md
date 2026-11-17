@@ -1,19 +1,19 @@
-# CampusBite — Sistema distribuido para la cafetería universitaria
+# CampusBite, sistema distribuido para la cafetería universitaria
 
 Práctica 02 · Mecanismos de comunicación en Sistemas Distribuidos (UPS).
 
-Los estudiantes hacen pedidos desde la web o el celular. Cada pedido llega a cocina, caja y facturación, el estudiante recibe una notificación cuando está listo, y la administración ve las estadísticas de ventas.
+Con CampusBite los estudiantes hacen sus pedidos desde la web o el celular. Cada pedido llega a cocina, caja y facturación, el estudiante recibe un aviso cuando su pedido está listo y la administración puede ver las estadísticas de ventas.
 
 ## Mecanismos de comunicación
 
 | Mecanismo | Tipo | Dónde se usa | Decisión |
 |---|---|---|---|
-| REST | Síncrono | Cliente → API de Pedidos; cajero → API y Caja; administración → Estadísticas | `docs/adr/ADR-001-rest.md` |
-| Kafka | Asíncrono | API → cocina, caja y estadísticas (`pedido.creado`); cambios de estado entre servicios, que también activan a facturación (`pedido.estado`) | `docs/adr/ADR-002-kafka.md` |
-| gRPC | Síncrono | Facturación → Caja (`ConfirmarPago`), al recibir `PAGO/PAGADO` y antes de emitir la factura | `docs/adr/ADR-003-grpc.md` |
-| WebSocket | Asíncrono (conexión persistente) | Notificaciones → cliente (cambios de estado y pedido listo) | `docs/adr/ADR-004-websockets.md` |
+| REST | Síncrono | Cliente → API de Pedidos, cajero → API y Caja, administración → Estadísticas | `docs/adr/ADR-001-rest.md` |
+| Kafka | Asíncrono | API → cocina, caja y estadísticas con `pedido.creado`. Los cambios de estado viajan entre servicios por `pedido.estado`, que también activa a facturación | `docs/adr/ADR-002-kafka.md` |
+| gRPC | Síncrono | Facturación → Caja (`ConfirmarPago`) cuando recibe `PAGO/PAGADO`, antes de emitir la factura | `docs/adr/ADR-003-grpc.md` |
+| WebSocket | Asíncrono, con conexión persistente | Notificaciones → cliente, para los cambios de estado y el aviso de pedido listo | `docs/adr/ADR-004-websockets.md` |
 
-La consigna pide REST y dos mecanismos más, y el grupo implementa cuatro. La justificación de la selección está en `docs/adr/ADR-005-seleccion.md`.
+La consigna pide REST y dos mecanismos más, y nosotros implementamos cuatro. Por qué elegimos estos se explica en `docs/adr/ADR-005-seleccion.md`.
 
 ## Estructura
 
@@ -21,12 +21,12 @@ La consigna pide REST y dos mecanismos más, y el grupo implementa cuatro. La ju
 |---|---|
 | `backend/api_rest/` | API de Pedidos (REST, puerto 8000) |
 | `backend/kafka/` | Capa Kafka común: productor, consumidor base, eventos y simuladores |
-| `backend/cocina/` | Cocina (consume `pedido.creado`, publica preparación) |
-| `backend/caja/` | Caja (REST 8001 y servidor gRPC 50051) |
-| `backend/facturacion/` | Facturación (cliente gRPC) |
+| `backend/cocina/` | Cocina, que consume `pedido.creado` y publica la preparación |
+| `backend/caja/` | Caja, con REST en el 8001 y servidor gRPC en el 50051 |
+| `backend/facturacion/` | Facturación, que es el cliente gRPC |
 | `backend/grpc/` | Cliente y servidor gRPC de Caja |
-| `backend/websockets/` | Servidor de notificaciones (WebSocket 8765) |
-| `backend/estadisticas/` | Estadísticas de ventas (REST 8002) |
+| `backend/websockets/` | Servidor de notificaciones por WebSocket en el 8765 |
+| `backend/estadisticas/` | Estadísticas de ventas por REST en el 8002 |
 | `contracts/` | `pedido.schema.json` y `grpc/caja.proto` |
 | `infra/` | `docker-compose.yml` de Kafka |
 | `docs/contratos.md` | Contrato de comunicación entre servicios |
@@ -37,9 +37,9 @@ La consigna pide REST y dos mecanismos más, y el grupo implementa cuatro. La ju
 
 ## Requisitos
 
-- Python 3.12 o superior (probado con 3.14.5)
-- Docker Desktop, para Kafka (imagen `apache/kafka:3.8.1`)
-- Las dependencias de `requirements.txt` (versiones fijadas)
+- Python 3.12 o superior. Lo probamos con 3.14.5
+- Docker Desktop para Kafka, con la imagen `apache/kafka:3.8.1`
+- Las dependencias de `requirements.txt`, que tienen las versiones fijadas
 
 ## Instalación (una sola vez)
 
@@ -59,58 +59,58 @@ py -m venv .venv
 
 ## Cómo ejecutar
 
-Todos los servicios se ejecutan **desde la raíz del repositorio**, cada uno en su propia terminal. En Windows, reemplazar `.venv/bin/python` por `.venv\Scripts\python`.
+Todos los servicios se ejecutan **desde la raíz del repositorio**, cada uno en su propia terminal. En Windows hay que cambiar `.venv/bin/python` por `.venv\Scripts\python`.
 
-1. **Kafka.** Crea los topics `pedido.creado`, `pedido.estado` y `pedido.dlq`:
+1. **Kafka.** Al levantarlo se crean los topics `pedido.creado`, `pedido.estado` y `pedido.dlq`.
    ```bash
    docker compose -f infra/docker-compose.yml up -d
    ```
-2. **API de Pedidos** (`http://localhost:8000`, Swagger en `/docs`):
+2. **API de Pedidos** en `http://localhost:8000`, con Swagger en `/docs`.
    ```bash
    .venv/bin/python -m backend.api_rest.main
    ```
-3. **Cocina:**
+3. **Cocina.**
    ```bash
    .venv/bin/python -m backend.cocina.main --demora 5
    ```
-4. **Estadísticas** (`http://localhost:8002`):
+4. **Estadísticas** en `http://localhost:8002`.
    ```bash
    .venv/bin/python -m backend.estadisticas.main
    ```
-5. **Caja** (REST `http://localhost:8001` y gRPC en el puerto 50051):
+5. **Caja**, con REST en `http://localhost:8001` y gRPC en el puerto 50051.
    ```bash
    .venv/bin/python -m uvicorn backend.caja.main:app --port 8001
    ```
-6. **Facturación:**
+6. **Facturación.**
    ```bash
    .venv/bin/python -m backend.facturacion.main
    ```
-7. **Notificaciones** (`ws://localhost:8765`):
+7. **Notificaciones** en `ws://localhost:8765`.
    ```bash
    .venv/bin/python -m backend.websockets.servidor
    ```
-8. **Cliente web:** abrir `backend/websockets/cliente/index.html` en el navegador.
+8. **Cliente web.** Se abre `backend/websockets/cliente/index.html` en el navegador.
 
-Al arrancar, cada consumidor lee los eventos que tiene pendientes en Kafka. Si quedaron eventos de ejecuciones anteriores, Cocina y Facturación tardan un poco en ponerse al día. Para empezar con Kafka vacío, apagarlo con `down` (ver abajo) y volver a levantarlo: el contenedor no guarda los datos en un volumen.
+Cuando arranca, cada consumidor lee los eventos que tiene pendientes en Kafka. Si quedaron eventos de ejecuciones anteriores, Cocina y Facturación tardan un poco en ponerse al día. Para empezar con Kafka vacío basta con apagarlo y volver a levantarlo, porque el contenedor no guarda los datos en un volumen.
 
 Para apagar Kafka:
 ```bash
 docker compose -f infra/docker-compose.yml down
 ```
 
-Cada servicio tiene más detalle en su propia carpeta: `backend/api_rest/README.md` y `backend/websockets/README.md`.
+Hay más detalle en las carpetas de cada servicio, en `backend/api_rest/README.md` y `backend/websockets/README.md`.
 
 ## Cómo probar
 
 | Mecanismo | Prueba | Cómo ejecutarla |
 |---|---|---|
 | REST | Pedido duplicado y Kafka caído (`docs/pruebas/prueba-rest.md`) | `.venv/bin/python -m backend.api_rest.pruebas.prueba_idempotencia` |
-| Kafka | Consumidor de Cocina detenido (`docs/pruebas/prueba-kafka.md`) | Detener Cocina, crear un pedido y volver a levantarla |
-| gRPC | Caja no disponible y pago repetido (`docs/pruebas/prueba-grpc.md`) | Ver el documento de la prueba |
+| Kafka | Consumidor de Cocina detenido (`docs/pruebas/prueba-kafka.md`) | Se detiene Cocina, se crea un pedido y se vuelve a levantar |
+| gRPC | Caja no disponible y pago repetido (`docs/pruebas/prueba-grpc.md`) | Los pasos están en el documento de la prueba |
 | WebSocket | Cliente desconectado y reconectado (`docs/pruebas/prueba-websockets.md`) | `.venv/bin/python -m backend.websockets.prueba_reconexion --espera 15` |
 | Integración | Flujo completo con los cuatro mecanismos (`docs/pruebas/integracion.md`) | Con Kafka y los seis servicios en marcha: `.venv/bin/python -m backend.api_rest.pruebas.prueba_flujo_completo` |
 
-Pruebas automatizadas de todo el repositorio (no necesitan Kafka ni los servicios en marcha):
+Las pruebas automatizadas de todo el repositorio no necesitan Kafka ni los servicios en marcha.
 ```bash
 .venv/bin/python -m pytest -q
 ```

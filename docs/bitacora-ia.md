@@ -85,17 +85,17 @@ En conclusión, la IA fue una herramienta de apoyo para acelerar el desarrollo y
 
 - **David:**
 
-Usé Claude Code como apoyo durante todo el trabajo: para revisar el código, como guía para ordenar las tareas y la documentación, y para generar la primera versión de la API a partir del contrato. Las decisiones las tomé yo: qué se incorporaba, qué se descartaba y cómo se integraba con el trabajo de mis compañeros. Cada propuesta la verifiqué ejecutándola y contrastándola con el contrato y con las pruebas reales.
+Durante el trabajo utilicé Claude Code como apoyo para revisar código, organizar tareas, documentar y generar una primera versión de la API a partir del contrato. Sin embargo, las decisiones sobre qué utilizar y cómo integrarlo con el trabajo del equipo las tomé yo, comprobando las propuestas mediante pruebas reales.
 
-Hubo varios casos en que la IA se equivocó o no aplicaba a nuestro diseño:
+También encontré varios errores y limitaciones en sus recomendaciones:
 
-1. **Versión de Python.** Recomendó Python 3.12 por una incompatibilidad de una versión antigua de `kafka-python`. Al probarlo, todo funcionaba en Python 3.14 con la versión actual de la librería, así que no seguí esa restricción y lo corregí en el contrato.
-2. **Dos implementaciones de Kafka.** La primera versión de la API tenía su propio productor y consumidor, aunque el reparto decía que eso se coordinaba con el Integrante 2. Funcionaba por separado, pero duplicaba el mecanismo. Al revisar el trabajo de Caro decidí usar su capa común.
-3. **Nombre de la carpeta.** Se mantuvo `api-rest`, con guion, sin advertir que Python no puede importar ese nombre como paquete, cuando el resto del equipo ejecuta los servicios con `python -m backend.<servicio>`.
-4. **Un caso que no vio en el diseño.** La primera versión borraba la clave de idempotencia tras un `503`, sin considerar que Kafka pudo haber escrito el mensaje aunque la confirmación no llegara. Lo detectamos al analizar la prueba real, no al diseñar, y por eso agregué el estado `LIBERADA`.
-5. **Lo que la IA no conoce.** No sabe lo que hacen los compañeros hasta que está en el repositorio, ni las decisiones del grupo. Por ejemplo, el cambio de Facturación apareció recién al revisar `main`, y la decisión de adoptarlo y actualizar el contrato fue mía.
+1. **Versión de Python:** recomendó usar Python 3.12 por problemas con una versión antigua de `kafka-python`, pero al probarlo comprobé que funcionaba con Python 3.14 y la librería actual, así que corregí esa restricción en el contrato.
+2. **Implementación de Kafka:** inicialmente generó un productor y consumidor propios para la API, duplicando el trabajo del Integrante 2. Al revisar lo que había desarrollado Caro decidí utilizar su implementación común.
+3. **Nombre de la carpeta:** mantuvo `api-rest` sin considerar que el guion genera problemas al importar el paquete en Python mediante `python -m backend.<servicio>`.
+4. **Manejo de idempotencia:** la primera versión eliminaba la clave después de un error `503`, sin considerar que Kafka podía haber recibido el mensaje. Esto lo detectamos durante las pruebas y por eso agregué el estado `LIBERADA`.
+5. **Contexto del equipo:** la IA no conocía los cambios de mis compañeros ni las decisiones que tomábamos. Por ejemplo, el cambio en Facturación lo encontré al revisar `main` y decidí incorporarlo y actualizar el contrato.
 
-Mi conclusión es que la IA acelera el trabajo y sirve para encontrar casos que se escapan, pero sus respuestas hay que comprobarlas siempre con el sistema funcionando. Varias de sus propuestas eran correctas en general, pero no para nuestra arquitectura.
+En conclusión, la IA me ayudó a avanzar más rápido y revisar aspectos que podían pasar desapercibidos, pero también comprobé que no todas sus sugerencias se adaptaban a nuestro proyecto. Por eso fue necesario probar cada cambio y revisar que realmente funcionara con la arquitectura del equipo.
 
 - **Cinthya:**
 
