@@ -4,6 +4,10 @@ Práctica 02 · Mecanismos de comunicación en Sistemas Distribuidos (UPS).
 
 Con CampusBite los estudiantes hacen sus pedidos desde la web o el celular. Cada pedido llega a cocina, caja y facturación, el estudiante recibe un aviso cuando su pedido está listo y la administración puede ver las estadísticas de ventas.
 
+## Enlace de Vídeo Explicativo
+
+Haga click aquí: [https://youtu.be/20ZF09-7JhA](https://youtu.be/20ZF09-7JhA).
+
 ## Mecanismos de comunicación
 
 | Mecanismo | Tipo | Dónde se usa | Decisión |
